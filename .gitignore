@@ -1,0 +1,5 @@
+# Ignore temporary files and environment
+tmp/
+docs/
+doc/
+crawl4ai_env/
