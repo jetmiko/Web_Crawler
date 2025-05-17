@@ -21,7 +21,7 @@ async def main():
         print("Mode must be an integer (1, 2, or 10).")
         return
 
-    url = "https://bwfworldtour.bwfbadminton.com/tournament/5225/toyota-thailand-open-2025/results/2025-05-15"
+    url = "https://bwfworldtour.bwfbadminton.com/tournament/5225/toyota-thailand-open-2025/results/2025-05-18"
     output_dir = "output"
 
     if mode in [1, 10]:
