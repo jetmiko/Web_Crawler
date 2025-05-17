@@ -8,11 +8,17 @@ from playwright_stealth import stealth_async
 from bs4 import BeautifulSoup
 import re
 
-async def scrape_bwf():
-    """Scrape badminton match data from BWF World Tour website."""
+async def scrape_bwf(url, output_dir="output"):
+    """Scrape badminton match data from BWF World Tour website.
+    
+    Args:
+        url (str): URL of the BWF tournament results page
+        output_dir (str): Directory to save output files
+    
+    Returns:
+        list: List of match data dictionaries, or None if scraping fails
+    """
     # Configuration
-    url = "https://bwfworldtour.bwfbadminton.com/tournament/5225/toyota-thailand-open-2025/results/2025-05-15"
-    output_dir = "output"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     # Create output directory
@@ -117,7 +123,7 @@ async def scrape_bwf():
                     print("Found partial match data despite block. Attempting to extract.")
                 else:
                     print("No match data found in block page.")
-                    return
+                    return None
 
             # Extract tournament name
             tournament_elem = soup.select_one("div.page-hero-header-text h2")
@@ -160,7 +166,11 @@ async def scrape_bwf():
                         "date": event_date,
                         "court": current_court,
                         "venue": current_venue,
-                        "winner": None
+                        "winner": None,
+                        "category": None,      # First footer label (e.g., MD)
+                        "round": None,         # Second footer label (e.g., SF)
+                        "schedule_status": None,  # Schedule status (e.g., Starts)
+                        "schedule_date": None    # Schedule date (e.g., 12:00 PM)
                     }
 
                     # Extract match number
@@ -237,6 +247,27 @@ async def scrape_bwf():
                                 "team2": points[1].get_text(strip=True)
                             })
 
+                    # Extract footer labels and map to category and round
+                    footer_labels = elem.select("div.court-details-wrapper span.footer-label")
+                    footer_label_list = [label.get_text(strip=True) for label in footer_labels]
+                    if footer_label_list:
+                        # First label -> category
+                        if len(footer_label_list) >= 1:
+                            match_data["category"] = footer_label_list[0]
+                        # Second label -> round
+                        if len(footer_label_list) >= 2:
+                            match_data["round"] = footer_label_list[1]
+                        # Third label (e.g., Court 1) is ignored
+                        print(f"Footer labels for {match_data['match_number']}: {footer_label_list}")
+
+                    # Extract schedule status and date
+                    schedule_status_elem = elem.select_one("span.schedule-status")
+                    schedule_date_elem = elem.select_one("span.schedule-date")
+                    match_data["schedule_status"] = schedule_status_elem.get_text(strip=True) if schedule_status_elem else None
+                    match_data["schedule_date"] = schedule_date_elem.get_text(strip=True) if schedule_date_elem else None
+                    if match_data["schedule_status"] or match_data["schedule_date"]:
+                        print(f"Schedule for {match_data['match_number']}: Status={match_data['schedule_status']}, Date={match_data['schedule_date']}")
+
                     matches.append(match_data)
 
             # Output results
@@ -250,6 +281,10 @@ async def scrape_bwf():
                     print(f"Venue: {match['venue']}")
                     if match["winner"]:
                         print(f"Winner: {match['winner']}")
+                    print(f"Category: {match['category']}")
+                    print(f"Round: {match['round']}")
+                    print(f"Schedule Status: {match['schedule_status']}")
+                    print(f"Schedule Date: {match['schedule_date']}")
                     print("Team 1: " + ", ".join(
                         f"{p['name']} ({p['country_code']})" + (f" [{p['status_badge']}]" if p['status_badge'] else "")
                         for p in match['team1']
@@ -270,6 +305,8 @@ async def scrape_bwf():
             else:
                 print("\nNo match data found. Check the saved HTML and screenshot for changes in structure or missing results.")
 
+            return matches
+
         except Exception as e:
             print(f"An error occurred: {str(e)}")
             html_content = await page.content()
@@ -278,10 +315,8 @@ async def scrape_bwf():
                 f.write(html_content)
             print(f"Saved error HTML to {html_filename}")
             await page.screenshot(path=os.path.join(output_dir, f"screenshot_error_{timestamp}.png"))
+            return None
 
         finally:
             await context.close()
             await browser.close()
-
-if __name__ == "__main__":
-    asyncio.run(scrape_bwf())

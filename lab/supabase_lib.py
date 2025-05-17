@@ -1,86 +1,75 @@
 import json
 import os
-import glob
 from supabase import create_client, Client
-from uuid import uuid4
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
-
-# Initialize Supabase client using environment variables
-url = os.environ.get("SUPABASE_URL")
-key = os.environ.get("SUPABASE_KEY")
-
-# Validate environment variables
-if not url or not key:
-    raise ValueError("SUPABASE_URL and SUPABASE_KEY environment variables must be set")
-
-supabase: Client = create_client(url, key)
-
-def load_json_to_supabase():
-    """Read JSON files from output folder and insert into bwf_matches table."""
-    output_dir = "output"
-    json_pattern = os.path.join(output_dir, "match_data_*.json")
+async def load_json_to_supabase(json_file: str) -> dict:
+    """Load JSON match data to Supabase bwf_matches table.
     
-    # Find all JSON files
-    json_files = glob.glob(json_pattern)
-    if not json_files:
-        print(f"No JSON files found in {output_dir}")
-        return
+    Args:
+        json_file (str): Path to the JSON file containing match data
+    
+    Returns:
+        dict: Result with success status and message
+    """
+    # Load environment variables
+    load_dotenv()
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_KEY")
 
-    for json_file in json_files:
-        print(f"Processing file: {json_file}")
-        try:
-            # Read JSON file
-            with open(json_file, "r", encoding="utf-8") as f:
-                matches_data = json.load(f)
-            
-            if not isinstance(matches_data, list):
-                print(f"Error: {json_file} does not contain a list of matches")
-                continue
+    if not supabase_url or not supabase_key:
+        return {"success": False, "message": "Missing Supabase URL or Key"}
 
-            # Insert each match
-            for match in matches_data:
-                try:
-                    # Validate required fields
-                    required_fields = ["tournament_name", "date", "court", "venue", "match_number", "team1", "team2", "scores"]
-                    missing_fields = [field for field in required_fields if field not in match]
-                    if missing_fields:
-                        print(f"Skipping match in {json_file}: Missing fields {missing_fields}")
-                        continue
+    # Initialize Supabase client
+    supabase: Client = create_client(supabase_url, supabase_key)
 
-                    # Prepare match record
-                    match_record = {
-                        "id": str(uuid4()),
-                        "tournament_name": match["tournament_name"],
-                        "match_date": match["date"],
-                        "court": match["court"],
-                        "venue": match["venue"],
-                        "winner": match.get("winner"),  # Allow null
-                        "match_number": match["match_number"],
-                        "team1": match["team1"],
-                        "team2": match["team2"],
-                        "scores": match["scores"]
-                    }
+    try:
+        # Read JSON file
+        with open(json_file, "r", encoding="utf-8") as f:
+            matches = json.load(f)
 
-                    # Insert into bwf_matches table
-                    supabase.table("bwf_matches").insert(match_record).execute()
-                    print(f"Inserted match: {match['match_number']} from {json_file}")
+        if not matches:
+            return {"success": False, "message": f"No match data found in {json_file}"}
 
-                except Exception as e:
-                    # Handle duplicate matches or other errors
-                    if "duplicate key value violates unique constraint" in str(e):
-                        print(f"Skipped duplicate match: {match.get('match_number', 'Unknown')} in {json_file}")
-                    else:
-                        print(f"Error inserting match from {json_file}: {str(e)}")
+        # Insert matches into bwf_matches table
+        inserted_count = 0
+        for match in matches:
+            # Prepare data for insertion
+            match_data = {
+                "tournament_name": match.get("tournament_name"),
+                "match_date": match.get("date"),
+                "court": match.get("court"),
+                "venue": match.get("venue"),
+                "winner": match.get("winner"),
+                "match_number": match.get("match_number"),
+                "team1": match.get("team1"),
+                "team2": match.get("team2"),
+                "scores": match.get("scores"),
+                "category": match.get("category"),
+                "round": match.get("round"),
+                "schedule_status": match.get("schedule_status"),
+                "schedule_date": match.get("schedule_date")
+            }
 
-        except json.JSONDecodeError as e:
-            print(f"Error decoding JSON in {json_file}: {str(e)}")
-        except Exception as e:
-            print(f"Error processing {json_file}: {str(e)}")
+            # Insert or update (upsert) to handle duplicates
+            response = supabase.table("bwf_matches").upsert(
+                match_data,
+                on_conflict="tournament_name,match_date,match_number,court"
+            ).execute()
 
-    print("Finished processing all JSON files.")
+            # Check if insertion was successful
+            if response.data:
+                inserted_count += 1
+            else:
+                print(f"Failed to insert match {match.get('match_number')}: {response.error}")
 
-if __name__ == "__main__":
-    load_json_to_supabase()
+        return {
+            "success": True,
+            "message": f"Processed {json_file}: Inserted {inserted_count} matches"
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error processing {json_file}: {str(e)}"
+        }
