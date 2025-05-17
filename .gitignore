@@ -4,3 +4,4 @@ docs/
 doc/
 crawl4ai_env/
 output/
+__pycache__/
