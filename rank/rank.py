@@ -166,7 +166,43 @@ async def select_week_option(page, week_options, target_week="Week 10"):
     except Exception as e:
         print(f"Peringatan: Gagal memilih item dropdown yang memuat '{target_week}': {str(e)}")
         return False    
+    
 
+async def select_perpage_option(page, output_dir="output", target_perpage="25"):
+    """
+    Fungsi untuk memilih opsi tertentu dari dropdown 'Per page'.
+    
+    Args:
+        page (Page): Objek halaman Playwright.
+        output_dir (str): Direktori untuk menyimpan tangkapan layar jika terjadi error.
+        target_perpage (str): Nilai opsi yang ingin dipilih (default: '25').
+    
+    Returns:
+        bool: True jika opsi berhasil dipilih, False jika tidak.
+    """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    os.makedirs(output_dir, exist_ok=True)
+
+    try:
+        perpage_selector = 'div.select.perpage div.v-select__slot:has(> label:has-text("Per page"))'
+        await page.wait_for_selector(perpage_selector, timeout=15000)
+        print("Elemen dropdown berlabel 'Per page' ditemukan.")
+        icon_selector = 'div.select.perpage i.mdi-menu-down'
+        await page.click(icon_selector, force=True)
+        await page.wait_for_timeout(5000)  # Tunggu menu opsi muncul
+        page_selector = f'div.v-menu__content div[role="listbox"] div.v-list-item__title:text-matches("^{target_perpage}$", "i")'
+        await page.wait_for_selector(page_selector, timeout=20000)
+        await page.click(page_selector, force=True)
+        print(f"Berhasil memilih item dropdown yang memuat '{target_perpage}'.")
+        await page.wait_for_timeout(3000)  # Tunggu pembaruan halaman
+        return True
+    except Exception as e:
+        print(f"Peringatan: Gagal memilih item dropdown yang memuat '{target_perpage}': {str(e)}")
+        screenshot_path = os.path.join(output_dir, f"screenshot_perpage_error_{timestamp}.png")
+        await page.screenshot(path=screenshot_path)
+        print(f"Menyimpan tangkapan layar dropdown error ke {screenshot_path}")
+        return False
+    
 async def scrape_rank(url, ranking_option="BWF World Tour Rankings", output_dir="output"):
     """Mengikis halaman dari situs BWF World Tour untuk menyimpan HTML dan opsi dropdown Ranking.
     Args:
@@ -256,25 +292,9 @@ async def scrape_rank(url, ranking_option="BWF World Tour Rankings", output_dir=
             # await select_week_option(page, week_options, target_week="Week 11 (2025-03-11)")
             await select_week_option(page, week_options, target_week="Week 8")
 
+            # # Pilih item dropdown berlabel "Per page" yang memuat "25"
+            await select_perpage_option(page, output_dir=output_dir, target_perpage="100")
  
-
-            # Pilih item dropdown berlabel "Per page" yang memuat "25"
-            try:
-                perpage_selector = 'div.select.perpage div.v-select__slot:has(> label:has-text("Per page"))'
-                await page.wait_for_selector(perpage_selector, timeout=15000)
-                print("Elemen dropdown berlabel 'Per page' ditemukan.")
-                icon_selector = 'div.select.perpage i.mdi-menu-down'
-                await page.click(icon_selector, force=True)
-                await page.wait_for_timeout(5000)  # Tunggu menu opsi muncul
-                page_25_selector = 'div.v-menu__content div[role="listbox"] div.v-list-item__title:text-matches("^25$", "i")'
-                await page.wait_for_selector(page_25_selector, timeout=20000)
-                await page.click(page_25_selector, force=True)
-                print("Berhasil memilih item dropdown yang memuat '25'.")
-                await page.wait_for_timeout(3000)  # Tunggu pembaruan halaman
-            except Exception as e:
-                print(f"Peringatan: Gagal memilih item dropdown yang memuat '25': {str(e)}")
-                await page.screenshot(path=os.path.join(output_dir, f"screenshot_perpage_error_{timestamp}.png"))
-                print(f"Menyimpan tangkapan layar dropdown error ke screenshot_perpage_error_{timestamp}.png")
 
             # Periksa halaman blokir
             title = await page.title()
