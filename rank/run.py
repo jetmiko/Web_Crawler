@@ -41,10 +41,10 @@ async def main():
                     ranking_options = json.load(f)
                 if ranking_options and isinstance(ranking_options, list) and len(ranking_options) > 0:
                     ranking_option = ranking_options[0]
-                    weeks = await scrape_rank(url, ranking_option, output_dir)
+                    # weeks = await scrape_rank(url, ranking_option, output_dir)
+                    rankings = await scrape_rank(url, ranking_option, output_dir)
                     print(f"Using ranking option from {latest_json}: {ranking_option}")
-                    print(f"Scraped {len(weeks)} weeks for ranking option: {weeks}")
-                    # print(f"Scraped  weeks for ranking option: {weeks}")
+                    # print(f"Scraped {len(rankings)} rankings for ranking option: {rankings}")
                 else:
                     print(f"Warning: No valid ranking options found in {latest_json}. Using default: {default_ranking_option}")
             except Exception as e:
