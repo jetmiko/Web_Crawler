@@ -26,10 +26,11 @@ async def main():
     url = "https://bwfbadminton.com/rankings/"
     output_dir = "output"
     data_dir = "data"
-    default_ranking_option = "BWF World Junior Rankings"
+    # default_ranking_option = "BWF World Junior Rankings"
 
     # Determine ranking_option for modes 1 and 10
-    ranking_option = default_ranking_option
+    # ranking_option = default_ranking_option
+
     if mode in [1, 10]:
         # Find the latest JSON file in 'data' folder
         json_pattern = os.path.join(data_dir, "ranking_options_*.json")
@@ -40,17 +41,38 @@ async def main():
                 with open(latest_json, "r", encoding="utf-8") as f:
                     ranking_options = json.load(f)
                 if ranking_options and isinstance(ranking_options, list) and len(ranking_options) > 0:
-                    ranking_option = ranking_options[0]
-                    # weeks = await scrape_rank(url, ranking_option, output_dir)
-                    rankings = await scrape_rank(url, ranking_option, output_dir)
-                    print(f"Using ranking option from {latest_json}: {ranking_option}")
-                    # print(f"Scraped {len(rankings)} rankings for ranking option: {rankings}")
+                    for ranking_option in ranking_options:
+                        print(f"Processing ranking option: {ranking_option}")
+                        rankings = await scrape_rank(url, ranking_option, output_dir)
+                        print(f"Scraped {len(rankings)} rankings for ranking option: {ranking_option}")
                 else:
-                    print(f"Warning: No valid ranking options found in {latest_json}. Using default: {default_ranking_option}")
+                    print(f"Warning: No valid ranking options found in {latest_json}. ")
             except Exception as e:
-                print(f"Warning: Failed to read {latest_json}: {str(e)}. Using default: {default_ranking_option}")
+                print(f"Warning: Failed to read {latest_json}: {str(e)}. ")
         else:
-            print(f"Warning: No JSON files found in {data_dir}. Using default: {default_ranking_option}")
+            print(f"Warning: No JSON files found in {data_dir}. ")
+    
+    # if mode in [1, 10]:
+    #     # Find the latest JSON file in 'data' folder
+    #     json_pattern = os.path.join(data_dir, "ranking_options_*.json")
+    #     json_files = glob.glob(json_pattern)
+    #     if json_files:
+    #         latest_json = max(json_files, key=os.path.getctime)
+    #         try:
+    #             with open(latest_json, "r", encoding="utf-8") as f:
+    #                 ranking_options = json.load(f)
+    #             if ranking_options and isinstance(ranking_options, list) and len(ranking_options) > 0:
+    #                 ranking_option = ranking_options[0]
+    #                 # weeks = await scrape_rank(url, ranking_option, output_dir)
+    #                 rankings = await scrape_rank(url, ranking_option, output_dir)
+    #                 print(f"Using ranking option from {latest_json}: {ranking_option}")
+    #                 # print(f"Scraped {len(rankings)} rankings for ranking option: {rankings}")
+    #             else:
+    #                 print(f"Warning: No valid ranking options found in {latest_json}. Using default: {default_ranking_option}")
+    #         except Exception as e:
+    #             print(f"Warning: Failed to read {latest_json}: {str(e)}. Using default: {default_ranking_option}")
+    #     else:
+    #         print(f"Warning: No JSON files found in {data_dir}. Using default: {default_ranking_option}")
 
     if mode == 3:
         # Generate JSON file with ranking options
