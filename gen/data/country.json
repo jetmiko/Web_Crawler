@@ -1,0 +1,382 @@
+[
+    {
+        "id": "AFG",
+        "country": "Afghanistan",
+        "flag": "🇦🇫"
+    },
+    {
+        "id": "ALB",
+        "country": "Albania",
+        "flag": "🇦🇱"
+    },
+    {
+        "id": "DZA",
+        "country": "Algeria",
+        "flag": "🇩🇿"
+    },
+    {
+        "id": "AND",
+        "country": "Andorra",
+        "flag": "🇦🇩"
+    },
+    {
+        "id": "AGO",
+        "country": "Angola",
+        "flag": "🇦🇴"
+    },
+    {
+        "id": "ARG",
+        "country": "Argentina",
+        "flag": "🇦🇷"
+    },
+    {
+        "id": "ARM",
+        "country": "Armenia",
+        "flag": "🇦🇲"
+    },
+    {
+        "id": "AUS",
+        "country": "Australia",
+        "flag": "🇦🇺"
+    },
+    {
+        "id": "AUT",
+        "country": "Austria",
+        "flag": "🇦🇹"
+    },
+    {
+        "id": "AZE",
+        "country": "Azerbaijan",
+        "flag": "🇦🇿"
+    },
+    {
+        "id": "BAN",
+        "country": "Bangladesh",
+        "flag": "🇧🇩"
+    },
+    {
+        "id": "BEL",
+        "country": "Belgium",
+        "flag": "🇧🇪"
+    },
+    {
+        "id": "BRA",
+        "country": "Brazil",
+        "flag": "🇧🇷"
+    },
+    {
+        "id": "BRN",
+        "country": "Bahrain",
+        "flag": "🇧🇭"
+    },
+    {
+        "id": "BUL",
+        "country": "Bulgaria",
+        "flag": "🇧🇬"
+    },
+    {
+        "id": "CAN",
+        "country": "Canada",
+        "flag": "🇨🇦"
+    },
+    {
+        "id": "CHN",
+        "country": "China",
+        "flag": "🇨🇳"
+    },
+    {
+        "id": "COL",
+        "country": "Colombia",
+        "flag": "🇨🇴"
+    },
+    {
+        "id": "CZE",
+        "country": "Czech Republic",
+        "flag": "🇨🇿"
+    },
+    {
+        "id": "DEN",
+        "country": "Denmark",
+        "flag": "🇩🇰"
+    },
+    {
+        "id": "EGY",
+        "country": "Egypt",
+        "flag": "🇪🇬"
+    },
+    {
+        "id": "ENG",
+        "country": "England",
+        "flag": "🏴"
+    },
+    {
+        "id": "ESP",
+        "country": "Spain",
+        "flag": "🇪🇸"
+    },
+    {
+        "id": "EST",
+        "country": "Estonia",
+        "flag": "🇪🇪"
+    },
+    {
+        "id": "FIN",
+        "country": "Finland",
+        "flag": "🇫🇮"
+    },
+    {
+        "id": "FRA",
+        "country": "France",
+        "flag": "🇫🇷"
+    },
+    {
+        "id": "GER",
+        "country": "Germany",
+        "flag": "🇩🇪"
+    },
+    {
+        "id": "GRE",
+        "country": "Greece",
+        "flag": "🇬🇷"
+    },
+    {
+        "id": "HKG",
+        "country": "Hong Kong",
+        "flag": "🇭🇰"
+    },
+    {
+        "id": "HUN",
+        "country": "Hungary",
+        "flag": "🇭🇺"
+    },
+    {
+        "id": "IND",
+        "country": "India",
+        "flag": "🇮🇳"
+    },
+    {
+        "id": "INA",
+        "country": "Indonesia",
+        "flag": "🇮🇩"
+    },
+    {
+        "id": "IRI",
+        "country": "Iran",
+        "flag": "🇮🇷"
+    },
+    {
+        "id": "IRL",
+        "country": "Ireland",
+        "flag": "🇮🇪"
+    },
+    {
+        "id": "ISR",
+        "country": "Israel",
+        "flag": "🇮🇱"
+    },
+    {
+        "id": "ITA",
+        "country": "Italy",
+        "flag": "🇮🇹"
+    },
+    {
+        "id": "JPN",
+        "country": "Japan",
+        "flag": "🇯🇵"
+    },
+    {
+        "id": "JOR",
+        "country": "Jordan",
+        "flag": "🇯🇴"
+    },
+    {
+        "id": "KAZ",
+        "country": "Kazakhstan",
+        "flag": "🇰🇿"
+    },
+    {
+        "id": "KOR",
+        "country": "South Korea",
+        "flag": "🇰🇷"
+    },
+    {
+        "id": "KUW",
+        "country": "Kuwait",
+        "flag": "🇰🇼"
+    },
+    {
+        "id": "LAT",
+        "country": "Latvia",
+        "flag": "🇱🇻"
+    },
+    {
+        "id": "LBN",
+        "country": "Lebanon",
+        "flag": "🇱🇧"
+    },
+    {
+        "id": "LTU",
+        "country": "Lithuania",
+        "flag": "🇱🇹"
+    },
+    {
+        "id": "MAS",
+        "country": "Malaysia",
+        "flag": "🇲🇾"
+    },
+    {
+        "id": "MEX",
+        "country": "Mexico",
+        "flag": "🇲🇽"
+    },
+    {
+        "id": "MGL",
+        "country": "Mongolia",
+        "flag": "🇲🇳"
+    },
+    {
+        "id": "MAR",
+        "country": "Morocco",
+        "flag": "🇲🇦"
+    },
+    {
+        "id": "NED",
+        "country": "Netherlands",
+        "flag": "🇳🇱"
+    },
+    {
+        "id": "NEP",
+        "country": "Nepal",
+        "flag": "🇳🇵"
+    },
+    {
+        "id": "NGR",
+        "country": "Nigeria",
+        "flag": "🇳🇬"
+    },
+    {
+        "id": "NOR",
+        "country": "Norway",
+        "flag": "🇳🇴"
+    },
+    {
+        "id": "NZL",
+        "country": "New Zealand",
+        "flag": "🇳🇿"
+    },
+    {
+        "id": "PAK",
+        "country": "Pakistan",
+        "flag": "🇵🇰"
+    },
+    {
+        "id": "PER",
+        "country": "Peru",
+        "flag": "🇵🇪"
+    },
+    {
+        "id": "PHI",
+        "country": "Philippines",
+        "flag": "🇵🇭"
+    },
+    {
+        "id": "POL",
+        "country": "Poland",
+        "flag": "🇵🇱"
+    },
+    {
+        "id": "POR",
+        "country": "Portugal",
+        "flag": "🇵🇹"
+    },
+    {
+        "id": "QAT",
+        "country": "Qatar",
+        "flag": "🇶🇦"
+    },
+    {
+        "id": "ROU",
+        "country": "Romania",
+        "flag": "🇷🇴"
+    },
+    {
+        "id": "RUS",
+        "country": "Russia",
+        "flag": "🇷🇺"
+    },
+    {
+        "id": "SGP",
+        "country": "Singapore",
+        "flag": "🇸🇬"
+    },
+    {
+        "id": "SLO",
+        "country": "Slovenia",
+        "flag": "🇸🇮"
+    },
+    {
+        "id": "SRB",
+        "country": "Serbia",
+        "flag": "🇷🇸"
+    },
+    {
+        "id": "RSA",
+        "country": "South Africa",
+        "flag": "🇿🇦"
+    },
+    {
+        "id": "SRI",
+        "country": "Sri Lanka",
+        "flag": "🇱🇰"
+    },
+    {
+        "id": "SWE",
+        "country": "Sweden",
+        "flag": "🇸🇪"
+    },
+    {
+        "id": "SUI",
+        "country": "Switzerland",
+        "flag": "🇨🇭"
+    },
+    {
+        "id": "THA",
+        "country": "Thailand",
+        "flag": "🇹🇭"
+    },
+    {
+        "id": "TPE",
+        "country": "Chinese Taipei",
+        "flag": "🇹🇼"
+    },
+    {
+        "id": "TUR",
+        "country": "Turkey",
+        "flag": "🇹🇷"
+    },
+    {
+        "id": "UKR",
+        "country": "Ukraine",
+        "flag": "🇺🇦"
+    },
+    {
+        "id": "UAE",
+        "country": "United Arab Emirates",
+        "flag": "🇦🇪"
+    },
+    {
+        "id": "GBR",
+        "country": "United Kingdom",
+        "flag": "🇬🇧"
+    },
+    {
+        "id": "USA",
+        "country": "United States",
+        "flag": "🇺🇸"
+    },
+    {
+        "id": "VIE",
+        "country": "Vietnam",
+        "flag": "🇻🇳"
+    }
+]
