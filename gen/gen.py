@@ -1,67 +1,109 @@
 from playwright.async_api import async_playwright
+import sys
+import asyncio
+from genlib import prepare_page, save_html_content, save_screenshot  
+from supalib import save_tour_to_supabase
 from datetime import datetime
-import os
 import json
 import asyncio
 
-async def prepare_page(url, output_dir="output"):
-    """Prepare the browser and page for scraping, handling navigation, cookies, and CAPTCHAs."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    os.makedirs(output_dir, exist_ok=True)
 
-    p, browser, context, page = await initialize_browser()
-    if not page:
-        print("Failed to initialize browser for scraping.")
-        return None, None, None, None, timestamp
-
+async def switch_to_list_view(page):
+    """Switch the page to List View by clicking the List View label."""
     try:
-        if not await navigate_to_page(page, url):
-            raise Exception("Navigation to page failed.")
+        list_view_button = await page.wait_for_selector(
+            'label:has-text("List View")',
+            timeout=10000
+        )
+        if list_view_button:
+            await list_view_button.click()
+            print("Switched to List View.")
+            await page.wait_for_timeout(1000)
+        else:
+            print("List View button not found, proceeding anyway.")
+    except Exception as e:
+        print(f"Failed to switch to List View (non-critical): {str(e)}")
 
+async def save_ranking_options_to_json(page, output_dir, timestamp):
+    """Extract and save ranking dropdown options to JSON."""
+    try:
         await page.wait_for_load_state('networkidle')
-        await page.screenshot(path=f"{output_dir}/debug_screenshot_{timestamp}.png")
-        title = await page.title()
-        print(f"Page title: {title}")
+        selectors = [
+            'div.select div.v-select__slot:has(> label:has-text("Ranking"))',
+            'label:has-text("Ranking")',
+            'div.v-select__slot',
+            'role=combobox[name=/Ranking/i]'
+        ]
+        dropdown = None
+        for selector in selectors:
+            try:
+                dropdown = await page.wait_for_selector(selector, timeout=30000)
+                if dropdown:
+                    print(f"Dropdown found with selector: {selector}")
+                    break
+            except:
+                continue
 
-        if "Cloudflare" in title:
-            print("Cloudflare protection detected.")
-            return None, None, None, None, timestamp
+        if not dropdown:
+            print("Ranking dropdown not found with any selector.")
+            html_content = await page.content()
+            with open(f"{output_dir}/debug_page_{timestamp}.html", "w", encoding="utf-8") as f:
+                f.write(html_content)
+            elements = await page.query_selector_all('*:has-text("Ranking")')
+            for i, el in enumerate(elements):
+                outer_html = await el.evaluate('el => el.outerHTML')
+                print(f"Element {i} with 'Ranking': {outer_html}")
+            return None
 
-        await handle_cookie_consent(page)
+        await dropdown.click()
+        await page.wait_for_timeout(1000)
+        dropdown_container = await page.query_selector('div.v-menu__content')
+        if dropdown_container:
+            container_html = await dropdown_container.evaluate('el => el.outerHTML')
+            with open(f"{output_dir}/dropdown_html_{timestamp}.html", "w", encoding="utf-8") as f:
+                f.write(container_html)
+            print(f"Dropdown HTML saved to {output_dir}/dropdown_html_{timestamp}.html")
 
-        if await check_captcha(page):
-            print("Scraping stopped due to CAPTCHA detection.")
-            await page.screenshot(path=f"{output_dir}/captcha_screenshot_{timestamp}.png")
-            return None, None, None, None, timestamp
+        options = await page.query_selector_all('div.v-list-item__title')
+        if not options:
+            print("No dropdown options found with primary selector, trying fallback.")
+            options = await page.query_selector_all('div.v-list-item, option, [role="option"]')
 
-        return p, browser, context, page, timestamp
+        ranking_options = []
+        seen = set()
+        for option in options:
+            text = await option.inner_text()
+            text = text.strip()
+            if text and text not in seen:
+                ranking_options.append(text)
+                seen.add(text)
 
-    except Exception as e:
-        print(f"Error during preparation: {str(e)}")
-        if page:
-            await save_html_content(page, output_dir, timestamp, filename_prefix="bwf_tournaments_error")
-            await save_screenshot(page, output_dir, timestamp, suffix="_error")
-        return None, None, None, None, timestamp
+        if not ranking_options:
+            print("No ranking options extracted.")
+            return None
 
-async def scrape_ranking_options(page, output_dir, timestamp):
-    """Scrape ranking options from the prepared page and save to JSON."""
-    if not page:
-        print("Cannot scrape: Page is not prepared.")
-        return None
-
-    try:
-        ranking_options = await save_ranking_options_to_json(page, output_dir, timestamp)
+        output_file = f"{output_dir}/ranking_options_{timestamp}.json"
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(ranking_options, f, indent=2)
+        print(f"Ranking options saved to {output_file}")
         return ranking_options
+
     except Exception as e:
-        print(f"Error during scraping: {str(e)}")
-        await save_html_content(page, output_dir, timestamp, filename_prefix="bwf_tournaments_error")
-        await save_screenshot(page, output_dir, timestamp, suffix="_error")
+        print(f"Failed to extract or save ranking options: {str(e)}")
+        html_content = await page.content()
+        with open(f"{output_dir}/debug_page_{timestamp}.html", "w", encoding="utf-8") as f:
+            f.write(html_content)
         return None
 
 
 async def extract_match_card_text(page, output_dir, timestamp):
-    """Extract structured text from match-card elements and save to JSON."""
+    """Extract structured text from match-card elements and save to JSON with processed page title in each card."""
     try:
+        # Extract and process page title
+        full_title = (await page.title()).strip()
+        # Split on " | " and take the second part; fallback to full title if no delimiter
+        page_title = full_title.split(" | ")[1].strip() if " | " in full_title else full_title
+
         match_cards = await page.query_selector_all('div.match-card')
         if not match_cards:
             print("No match cards found.")
@@ -73,6 +115,9 @@ async def extract_match_card_text(page, output_dir, timestamp):
         match_card_data = []
         for card in match_cards:
             card_data = {}
+
+            # Add processed page title to card data
+            card_data["Tour"] = page_title
 
             # Match Name
             match_name_el = await card.query_selector('span.match-name')
@@ -186,7 +231,7 @@ async def extract_match_card_text(page, output_dir, timestamp):
         with open(f"{output_dir}/debug_page_{timestamp}.html", "w", encoding="utf-8") as f:
             f.write(html_content)
         return None
-    
+
 async def extract_schedule_links(page, output_dir):
     """Extract all schedule links from the days-tabs element and save to JSON."""
     try:
@@ -228,171 +273,23 @@ async def extract_schedule_links(page, output_dir):
         print(f"Failed to extract schedule links: {str(e)}")
         return None
 
-    
-async def initialize_browser():
-    """Initialize Playwright browser with realistic context."""
-    try:
-        p = await async_playwright().start()
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
-            viewport={"width": 1920, "height": 1080},
-            locale="en-US",
-            timezone_id="Asia/Jakarta"
-        )
-        page = await context.new_page()
-        return p, browser, context, page
-    except Exception as e:
-        print(f"Failed to initialize browser: {str(e)}")
-        return None, None, None, None
 
-async def navigate_to_page(page, url):
-    """Navigate to the specified URL and verify successful load."""
-    print(f"Navigating to {url}")
-    response = await page.goto(url)
-    if response and response.ok:
-        print("Page loaded successfully")
-        return True
-    print(f"Failed to load page: {response.status if response else 'No response'}")
-    return False
 
-async def handle_cookie_consent(page):
-    """Handle cookie consent popup if present."""
-    try:
-        cookie_button = await page.wait_for_selector(
-            'button#accept-cookies, button.accept, [id*="cookie"] button, '
-            'button[class*="consent"], button:text("Accept"), button:text("Allow"), '
-            'button:text("Agree"), [role="button"][aria-label*="cookie"]',
-            timeout=10000
-        )
-        if cookie_button:
-            await cookie_button.click()
-            print("Cookie consent accepted.")
-            await page.wait_for_timeout(1000)
-        else:
-            print("Cookie consent button not found, proceeding anyway.")
-    except Exception as e:
-        print(f"Failed to handle cookie consent (non-critical): {str(e)}")
 
-async def check_captcha(page):
-    """Check for CAPTCHA or Cloudflare protection."""
-    captcha_indicators = [
-        'text="Please complete the security check"',
-        '[title="Cloudflare"]',
-        'form#challenge-form',
-        'iframe[src*="captcha"]'
-    ]
-    for indicator in captcha_indicators:
-        try:
-            if await page.query_selector(indicator):
-                print(f"CAPTCHA detected: {indicator}")
-                return True
-        except Exception as e:
-            print(f"Error checking CAPTCHA indicator {indicator}: {str(e)}")
-    return False
-
-async def switch_to_list_view(page):
-    """Switch the page to List View by clicking the List View label."""
-    try:
-        list_view_button = await page.wait_for_selector(
-            'label:has-text("List View")',
-            timeout=10000
-        )
-        if list_view_button:
-            await list_view_button.click()
-            print("Switched to List View.")
-            await page.wait_for_timeout(1000)
-        else:
-            print("List View button not found, proceeding anyway.")
-    except Exception as e:
-        print(f"Failed to switch to List View (non-critical): {str(e)}")
-
-async def save_ranking_options_to_json(page, output_dir, timestamp):
-    """Extract and save ranking dropdown options to JSON."""
-    try:
-        await page.wait_for_load_state('networkidle')
-        selectors = [
-            'div.select div.v-select__slot:has(> label:has-text("Ranking"))',
-            'label:has-text("Ranking")',
-            'div.v-select__slot',
-            'role=combobox[name=/Ranking/i]'
-        ]
-        dropdown = None
-        for selector in selectors:
-            try:
-                dropdown = await page.wait_for_selector(selector, timeout=30000)
-                if dropdown:
-                    print(f"Dropdown found with selector: {selector}")
-                    break
-            except:
-                continue
-
-        if not dropdown:
-            print("Ranking dropdown not found with any selector.")
-            html_content = await page.content()
-            with open(f"{output_dir}/debug_page_{timestamp}.html", "w", encoding="utf-8") as f:
-                f.write(html_content)
-            elements = await page.query_selector_all('*:has-text("Ranking")')
-            for i, el in enumerate(elements):
-                outer_html = await el.evaluate('el => el.outerHTML')
-                print(f"Element {i} with 'Ranking': {outer_html}")
-            return None
-
-        await dropdown.click()
-        await page.wait_for_timeout(1000)
-        dropdown_container = await page.query_selector('div.v-menu__content')
-        if dropdown_container:
-            container_html = await dropdown_container.evaluate('el => el.outerHTML')
-            with open(f"{output_dir}/dropdown_html_{timestamp}.html", "w", encoding="utf-8") as f:
-                f.write(container_html)
-            print(f"Dropdown HTML saved to {output_dir}/dropdown_html_{timestamp}.html")
-
-        options = await page.query_selector_all('div.v-list-item__title')
-        if not options:
-            print("No dropdown options found with primary selector, trying fallback.")
-            options = await page.query_selector_all('div.v-list-item, option, [role="option"]')
-
-        ranking_options = []
-        seen = set()
-        for option in options:
-            text = await option.inner_text()
-            text = text.strip()
-            if text and text not in seen:
-                ranking_options.append(text)
-                seen.add(text)
-
-        if not ranking_options:
-            print("No ranking options extracted.")
-            return None
-
-        output_file = f"{output_dir}/ranking_options_{timestamp}.json"
-        with open(output_file, "w", encoding="utf-8") as f:
-            json.dump(ranking_options, f, indent=2)
-        print(f"Ranking options saved to {output_file}")
-        return ranking_options
-
-    except Exception as e:
-        print(f"Failed to extract or save ranking options: {str(e)}")
-        html_content = await page.content()
-        with open(f"{output_dir}/debug_page_{timestamp}.html", "w", encoding="utf-8") as f:
-            f.write(html_content)
+async def scrape_ranking_options(page, output_dir, timestamp):
+    """Scrape ranking options from the prepared page and save to JSON."""
+    if not page:
+        print("Cannot scrape: Page is not prepared.")
         return None
 
-async def save_screenshot(page, output_dir, timestamp, suffix=""):
-    """Save a screenshot of the current page."""
     try:
-        await page.screenshot(path=f"{output_dir}/screenshot_{timestamp}{suffix}.png")
+        ranking_options = await save_ranking_options_to_json(page, output_dir, timestamp)
+        return ranking_options
     except Exception as e:
-        print(f"Failed to save screenshot: {str(e)}")
-
-async def save_html_content(page, output_dir, timestamp, filename_prefix="page"):
-    """Save the current page HTML content."""
-    try:
-        html_content = await page.content()
-        with open(f"{output_dir}/{filename_prefix}_{timestamp}.html", "w", encoding="utf-8") as f:
-            f.write(html_content)
-    except Exception as e:
-        print(f"Failed to save HTML content: {str(e)}")
+        print(f"Error during scraping: {str(e)}")
+        await save_html_content(page, output_dir, timestamp, filename_prefix="bwf_tournaments_error")
+        await save_screenshot(page, output_dir, timestamp, suffix="_error")
+        return None
 
 async def match_card_text(url):
     p, browser, context, page, timestamp = await prepare_page(url)
@@ -404,9 +301,12 @@ async def match_card_text(url):
 
     try:
         await switch_to_list_view(page)
-        await save_html_content(page,  "output",timestamp, "listview")
-        await save_screenshot(page,  "output",timestamp, "listview")
+        await save_html_content(page, "output", timestamp, "listview")
+        await save_screenshot(page, "output", timestamp, "listview")
         await extract_match_card_text(page, "output", timestamp)
+        # Load scraped data into Supabase
+        result = await save_tour_to_supabase("output")
+        print(f"Supabase insertion result: {result['message']}")
     finally:
         if page:
             await page.close()
@@ -426,9 +326,8 @@ async def schedule_links(url):
         return
 
     try:
-        # await switch_to_list_view(page)
-        await save_html_content(page,  "output",timestamp, "listview")
-        await save_screenshot(page,  "output",timestamp, "listview")
+        await save_html_content(page, "output", timestamp, "listview")
+        await save_screenshot(page, "output", timestamp, "listview")
         await extract_schedule_links(page, "output")
     finally:
         if page:
@@ -440,18 +339,28 @@ async def schedule_links(url):
         if p:
             await p.stop()
 
-
-
 async def main():
-    url = "https://bwfworldtour.bwfbadminton.com/tournament/5222/petronas-malaysia-open-2025/results/2025-01-07"
-    await match_card_text(url)
+    if len(sys.argv) < 2:
+        print("Gunakan: python gen.py [1|2|3|4]")
+        return
 
-    # url = "https://bwfworldtour.bwfbadminton.com/tournament/5225/toyota-thailand-open-2025/results/2025-05-14"
-    # await match_card_text(url)
+    option = sys.argv[1]
 
-    # url = "https://bwfworldtour.bwfbadminton.com/tournament/5224/perodua-malaysia-masters-2025/results/2025-05-20"
-    # await schedule_links(url)
+    if option == "1":
+        url = "https://bwfworldtour.bwfbadminton.com/tournament/5222/petronas-malaysia-open-2025/results/2025-01-07"
+        await match_card_text(url)
+    elif option == "2":
+        url = "https://bwfworldtour.bwfbadminton.com/tournament/5225/toyota-thailand-open-2025/results/2025-05-14"
+        await match_card_text(url)
+    elif option == "3":
+        url = "https://bwfworldtour.bwfbadminton.com/tournament/5224/perodua-malaysia-masters-2025/results/2025-05-20"
+        await schedule_links(url)
+    elif option == "4":
+        result = await save_tour_to_supabase("output")
+        print(f"Supabase insertion result: {result['message']}")
 
+    else:
+        print("Opsi tidak valid. Gunakan: 1, 2, atau 3")
 
 if __name__ == "__main__":
     asyncio.run(main())
