@@ -122,3 +122,145 @@ async def save_tour_to_supabase(output_dir: str = "output") -> dict:
             "success": False,
             "message": f"Error processing files in {output_dir}: {str(e)}"
         }
+    
+
+async def bwf_calendar_to_supabase(output_dir: str = "output") -> dict:
+    """Save JSON calendar data from output folder to Supabase bwf_calendar table.
+    
+    Args:
+        output_dir (str): Path to the folder containing JSON files (default: 'output')
+    
+    Returns:
+        dict: Result with success status and message
+    """
+    # Load environment variables
+    load_dotenv()
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_KEY")
+
+    if not supabase_url or not supabase_key:
+        return {"success": False, "message": "Missing Supabase URL or Key"}
+
+    # Initialize Supabase client
+    supabase: Client = create_client(supabase_url, supabase_key)
+
+    # Month mapping for conversion
+    month_map = {
+        "JANUARY": 1, "FEBRUARY": 2, "MARCH": 3, "APRIL": 4, "MAY": 5, "JUNE": 6,
+        "JULY": 7, "AUGUST": 8, "SEPTEMBER": 9, "OCTOBER": 10, "NOVEMBER": 11, "DECEMBER": 12
+    }
+
+    try:
+        # Find all JSON files in output folder matching calendar_*.json
+        json_files = glob.glob(os.path.join(output_dir, "calendar_*.json"))
+        if not json_files:
+            return {"success": False, "message": f"No calendar_*.json files found in {output_dir}"}
+
+        total_inserted = 0
+        total_skipped = 0
+        total_files = len(json_files)
+        error_messages = []
+
+        for json_file in json_files:
+            try:
+                # Read JSON file
+                with open(json_file, "r", encoding="utf-8") as f:
+                    tournaments = json.load(f)
+
+                if not tournaments:
+                    error_messages.append(f"No tournament data found in {json_file}")
+                    continue
+
+                # Insert tournaments into bwf_calendar table
+                inserted_count = 0
+                skipped_count = 0
+                for tournament in tournaments:
+                    # Validate required fields
+                    required_fields = [
+                        "Month", "Date", "Tournament_Name", "Location",
+                        "Country", "Category", "Prize_Money"
+                    ]
+                    missing_fields = [field for field in required_fields if not tournament.get(field)]
+                    if missing_fields:
+                        error_messages.append(
+                            f"Skipped tournament {tournament.get('Tournament_Name', 'unknown')} in {json_file}: "
+                            f"Missing required fields: {', '.join(missing_fields)}"
+                        )
+                        skipped_count += 1
+                        continue
+
+                    # Convert month to integer
+                    month_str = tournament.get("Month").upper()
+                    if month_str not in month_map:
+                        error_messages.append(
+                            f"Skipped tournament {tournament.get('Tournament_Name', 'unknown')} in {json_file}: "
+                            f"Invalid month: {month_str}"
+                        )
+                        skipped_count += 1
+                        continue
+                    month_num = month_map[month_str]
+
+                    # Clean prize money
+                    prize_money_str = tournament.get("Prize_Money")
+                    try:
+                        prize_money = int(prize_money_str.replace("US $ ", "").replace(",", ""))
+                    except (ValueError, AttributeError):
+                        error_messages.append(
+                            f"Skipped tournament {tournament.get('Tournament_Name', 'unknown')} in {json_file}: "
+                            f"Invalid prize money format: {prize_money_str}"
+                        )
+                        skipped_count += 1
+                        continue
+
+                    # Clean category by removing "HSBC BWF WORLD TOUR " prefix
+                    category = tournament.get("Category", "")
+                    if category.startswith("HSBC BWF WORLD TOUR "):
+                        category = category.replace("HSBC BWF WORLD TOUR ", "")
+
+                    # Prepare data for insertion
+                    tournament_data = {
+                        "month": month_num,
+                        "date": tournament.get("Date"),
+                        "name": tournament.get("Tournament_Name"),
+                        "location": tournament.get("Location"),
+                        "country": tournament.get("Country"),
+                        "category": category,
+                        "prize_money": prize_money
+                    }
+
+                    # Insert or update (upsert) to handle duplicates
+                    response = supabase.table("bwf_calendar").upsert(
+                        tournament_data,
+                        on_conflict="name,date,month"
+                    ).execute()
+
+                    # Check if insertion was successful
+                    if response.data:
+                        inserted_count += 1
+                    else:
+                        error_messages.append(
+                            f"Failed to insert tournament {tournament.get('Tournament_Name')} from {json_file}: {response.error}"
+                        )
+
+                total_inserted += inserted_count
+                total_skipped += skipped_count
+                print(f"Processed {json_file}: Inserted {inserted_count} tournaments, Skipped {skipped_count} tournaments")
+
+            except Exception as e:
+                error_messages.append(f"Error processing {json_file}: {str(e)}")
+
+        # Prepare final result
+        result = {
+            "success": total_inserted > 0,
+            "message": f"Processed {total_files} JSON files: Inserted {total_inserted} tournaments, Skipped {total_skipped} tournaments"
+        }
+        if error_messages:
+            result["message"] += f"\nErrors encountered:\n" + "\n".join(error_messages)
+
+        return result
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error processing files in {output_dir}: {str(e)}"
+        }

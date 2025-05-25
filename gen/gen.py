@@ -2,7 +2,7 @@ from playwright.async_api import async_playwright
 import sys
 import asyncio
 from genlib import prepare_page, save_html_content, save_screenshot  
-from supalib import save_tour_to_supabase
+from supalib import save_tour_to_supabase, bwf_calendar_to_supabase
 from datetime import datetime
 import json
 import asyncio
@@ -232,6 +232,123 @@ async def extract_match_card_text(page, output_dir, timestamp):
             f.write(html_content)
         return None
 
+async def extract_calendar(page, output_dir, timestamp):
+    """Extract structured text from tournament-card elements and save to JSON with processed page title."""
+    try:
+        # Extract and process page title
+        full_title = (await page.title()).strip()
+        # Split on " | " and take the second part; fallback to full title if no delimiter
+        page_title = full_title.split(" | ")[1].strip() if " | " in full_title else full_title
+
+        # Select the tournamentList container
+        tournament_list = await page.query_selector('div.tournamentList')
+        if not tournament_list:
+            print("No tournament list found.")
+            html_content = await page.content()
+            with open(f"{output_dir}/debug_page_{timestamp}.html", "w", encoding="utf-8") as f:
+                f.write(html_content)
+            return None
+
+        # Initialize data structure
+        tournament_data = []
+        current_month = None
+
+        # Select all elements within tournamentList
+        elements = await tournament_list.query_selector_all('h2.title-nolink, div.tmt-card-wrapper')
+
+        for element in elements:
+            # Check if the element is a month header
+            if await element.evaluate('el => el.classList.contains("title-nolink")'):
+                current_month = (await element.inner_text()).strip()
+                continue
+
+            # Process tournament card
+            card_data = {"Month": current_month} if current_month else {}
+            card_data["Tour"] = page_title
+
+            # Extract link
+            link_el = await element.query_selector('a')
+            if link_el:
+                card_data["Link"] = (await link_el.get_attribute('href')).strip()
+
+            # Extract tournament logo
+            logo_el = await element.query_selector('div.logo-wrapper img')
+            if logo_el:
+                card_data["Logo_URL"] = (await logo_el.get_attribute('src')).strip()
+
+            # Extract tournament details
+            details_el = await element.query_selector('div.tmt-details')
+            if details_el:
+                # Date
+                date_el = await details_el.query_selector('div.date span')
+                if date_el:
+                    card_data["Date"] = (await date_el.inner_text()).strip()
+
+                # Tournament Name
+                name_el = await details_el.query_selector('span.name')
+                if name_el:
+                    card_data["Tournament_Name"] = (await name_el.inner_text()).strip()
+
+                # Country and City
+                country_el = await details_el.query_selector('div.country')
+                if country_el:
+                    country_text = (await country_el.inner_text()).strip()
+                    card_data["Location"] = country_text
+                    country_img = await country_el.query_selector('img')
+                    if country_img:
+                        card_data["Country"] = (await country_img.get_attribute('alt')).strip()
+
+                # Category and Prize Money
+                labels_el = await details_el.query_selector('div.labels[style*="margin-top"]')
+                if labels_el:
+                    category_el = await labels_el.query_selector('div.label-category')
+                    if category_el:
+                        card_data["Category"] = (await category_el.inner_text()).strip()
+                    prize_el = await labels_el.query_selector('div.prize-money')
+                    if prize_el:
+                        card_data["Prize_Money"] = (await prize_el.inner_text()).strip()
+
+                # Category Logo
+                category_logo_el = await details_el.query_selector('div.category-logo img')
+                if category_logo_el:
+                    card_data["Category_Logo_URL"] = (await category_logo_el.get_attribute('src')).strip()
+
+            # Extract header images
+            header_img_desktop = await element.query_selector('div.header-img img.header-img-desktop')
+            if header_img_desktop:
+                card_data["Header_Image_Desktop_URL"] = (await header_img_desktop.get_attribute('src')).strip()
+
+            header_img_mobile = await element.query_selector('div.header-img img.header-img-mobile')
+            if header_img_mobile:
+                card_data["Header_Image_Mobile_URL"] = (await header_img_mobile.get_attribute('src')).strip()
+
+            # Extract Etihad logo link if present
+            etihad_el = await element.query_selector('a.etihad-logo')
+            if etihad_el:
+                etihad_img = await etihad_el.query_selector('img')
+                if etihad_img:
+                    card_data["Etihad_Logo_URL"] = (await etihad_img.get_attribute('src')).strip()
+
+            if card_data:
+                tournament_data.append(card_data)
+
+        if not tournament_data:
+            print("No data extracted from tournament cards.")
+            return None
+
+        output_file = f"{output_dir}/calendar_{timestamp}.json"
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(tournament_data, f, indent=2)
+        print(f"Tournament calendar text saved to {output_file}")
+        return tournament_data
+
+    except Exception as e:
+        print(f"Failed to extract tournament calendar text: {str(e)}")
+        html_content = await page.content()
+        with open(f"{output_dir}/debug_page_{timestamp}.html", "w", encoding="utf-8") as f:
+            f.write(html_content)
+        return None
+
 async def extract_schedule_links(page, output_dir):
     """Extract all schedule links from the days-tabs element and save to JSON."""
     try:
@@ -317,6 +434,31 @@ async def match_card_text(url):
         if p:
             await p.stop()
 
+async def do_extract_calendar(url):
+    p, browser, context, page, timestamp = await prepare_page(url)
+    if not page:
+        print("Preparation failed, cannot proceed with scraping.")
+        if p:
+            await p.stop()
+        return
+
+    try:
+        await save_html_content(page, "output", timestamp, "calendar")
+        await save_screenshot(page, "output", timestamp, "calendar")
+        await extract_calendar(page, "output", timestamp)
+        # Load scraped data into Supabase
+        # result = await save_tour_to_supabase("output")
+        # print(f"Supabase insertion result: {result['message']}")
+    finally:
+        if page:
+            await page.close()
+        if context:
+            await context.close()
+        if browser:
+            await browser.close()
+        if p:
+            await p.stop()
+
 async def schedule_links(url):
     p, browser, context, page, timestamp = await prepare_page(url)
     if not page:
@@ -341,7 +483,7 @@ async def schedule_links(url):
 
 async def main():
     if len(sys.argv) < 2:
-        print("Gunakan: python gen.py [1|2|3|4]")
+        print("Gunakan: python gen.py [1|2|3|4|10|11]")
         return
 
     option = sys.argv[1]
@@ -356,7 +498,13 @@ async def main():
         url = "https://bwfworldtour.bwfbadminton.com/tournament/5224/perodua-malaysia-masters-2025/results/2025-05-20"
         await schedule_links(url)
     elif option == "4":
+        url = "https://bwfworldtour.bwfbadminton.com/calendar/?cyear=2025&rstate=all"
+        await do_extract_calendar(url)
+    elif option == "10":  # SAVE TABLE TOUR KE SUPABASE
         result = await save_tour_to_supabase("output")
+        print(f"Supabase insertion result: {result['message']}")
+    elif option == "11":  # SAVE TABLE CALENDAR KE SUPABASE
+        result = await bwf_calendar_to_supabase("output")
         print(f"Supabase insertion result: {result['message']}")
 
     else:
