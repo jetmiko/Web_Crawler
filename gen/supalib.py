@@ -125,7 +125,8 @@ async def save_tour_to_supabase(output_dir: str = "output") -> dict:
     
 
 async def bwf_calendar_to_supabase(output_dir: str = "output") -> dict:
-    """Save JSON calendar data from output folder to Supabase bwf_calendar table.
+    """
+    Save JSON calendar data from output folder to Supabase bwf_calendar table, including id field.
     
     Args:
         output_dir (str): Path to the folder containing JSON files (default: 'output')
@@ -178,7 +179,7 @@ async def bwf_calendar_to_supabase(output_dir: str = "output") -> dict:
                     # Validate required fields
                     required_fields = [
                         "Month", "Date", "Tournament_Name", "Location",
-                        "Country", "Category", "Prize_Money"
+                        "Country", "Category", "Prize_Money", "id"
                     ]
                     missing_fields = [field for field in required_fields if not tournament.get(field)]
                     if missing_fields:
@@ -217,8 +218,9 @@ async def bwf_calendar_to_supabase(output_dir: str = "output") -> dict:
                     if category.startswith("HSBC BWF WORLD TOUR "):
                         category = category.replace("HSBC BWF WORLD TOUR ", "")
 
-                    # Prepare data for insertion
+                    # Prepare data for insertion, including id
                     tournament_data = {
+                        "id": tournament.get("id"),
                         "month": month_num,
                         "date": tournament.get("Date"),
                         "name": tournament.get("Tournament_Name"),
@@ -231,7 +233,7 @@ async def bwf_calendar_to_supabase(output_dir: str = "output") -> dict:
                     # Insert or update (upsert) to handle duplicates
                     response = supabase.table("bwf_calendar").upsert(
                         tournament_data,
-                        on_conflict="name,date,month"
+                        on_conflict="id"  # Use id as the conflict key
                     ).execute()
 
                     # Check if insertion was successful

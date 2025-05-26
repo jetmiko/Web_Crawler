@@ -3,10 +3,11 @@ import sys
 import asyncio
 from genlib import prepare_page, save_html_content, save_screenshot  
 from supalib import save_tour_to_supabase, bwf_calendar_to_supabase
+from jsonlib import get_string_array_from_json, delete_files_by_extension, add_id_to_json
 from datetime import datetime
 import json
 import asyncio
-
+import os
 
 async def switch_to_list_view(page):
     """Switch the page to List View by clicking the List View label."""
@@ -349,47 +350,68 @@ async def extract_calendar(page, output_dir, timestamp):
             f.write(html_content)
         return None
 
-async def extract_schedule_links(page, output_dir):
+async def extract_schedule_links(page, output_dir, id):
     """Extract all schedule links from the days-tabs element and save to JSON."""
     try:
         # Generate timestamp for the output file
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        # Query the ul element with id="ajaxTabsResults"
+        # Try to find the tabs container with multiple selectors
+        tabs_container = None
+        
+        # First try: ajaxTabsResults with full class
         tabs_container = await page.query_selector('ul#ajaxTabsResults.content-tabs.days-tabs')
-        if not tabs_container:
-            print("No schedule tabs found with id='ajaxTabsResults'.")
-            return None
-
+        if tabs_container:
+            print("Found schedule tabs with id='ajaxTabsResults'")
+        else:
+            # Second try: ajaxTabs with content-tabs class only
+            tabs_container = await page.query_selector('ul#ajaxTabs.content-tabs')
+            if tabs_container:
+                print("Found schedule tabs with id='ajaxTabs' (fallback)")
+            else:
+                # Third try: ajaxTabs without class restriction
+                tabs_container = await page.query_selector('ul#ajaxTabs')
+                if tabs_container:
+                    print("Found schedule tabs with id='ajaxTabs' (generic fallback)")
+                else:
+                    # Fourth try: any ul with content-tabs class
+                    tabs_container = await page.query_selector('ul.content-tabs')
+                    if tabs_container:
+                        print("Found schedule tabs with class 'content-tabs' (broad fallback)")
+                    else:
+                        print("No schedule tabs found with any of the expected selectors.")
+                        return None
+        
         # Query all <a> tags within the ul
         link_elements = await tabs_container.query_selector_all('a')
         if not link_elements:
             print("No links found in schedule tabs.")
             return None
-
+        
         # Extract href attributes
         links = []
         for link_el in link_elements:
             href = await link_el.get_attribute('href')
             if href:
                 links.append(href.strip())
-
+        
         if not links:
             print("No valid links extracted from schedule tabs.")
             return None
-
+        
         # Save links to JSON
-        output_file = f"{output_dir}/schedule_links_{timestamp}.json"
+        # output_file = f"{output_dir}/schedule_links_{timestamp}.json"
+        output_file = f"{output_dir}/schedule_links_{id}.json"
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(links, f, indent=2)
         print(f"Schedule links saved to {output_file}")
-
+        print(f"Total links extracted: {len(links)}")
+        
         return links
-
+    
     except Exception as e:
         print(f"Failed to extract schedule links: {str(e)}")
         return None
-
 
 
 
@@ -459,7 +481,7 @@ async def do_extract_calendar(url):
         if p:
             await p.stop()
 
-async def schedule_links(url):
+async def schedule_links(url, id):
     p, browser, context, page, timestamp = await prepare_page(url)
     if not page:
         print("Preparation failed, cannot proceed with scraping.")
@@ -470,7 +492,8 @@ async def schedule_links(url):
     try:
         await save_html_content(page, "output", timestamp, "listview")
         await save_screenshot(page, "output", timestamp, "listview")
-        await extract_schedule_links(page, "output")
+        links = await extract_schedule_links(page, "output", id)
+        return links
     finally:
         if page:
             await page.close()
@@ -480,6 +503,61 @@ async def schedule_links(url):
             await browser.close()
         if p:
             await p.stop()
+
+
+async def loop_schedule_links(prefix="schedule_links", folder="input"):
+    # Cek apakah folder ada
+    if not os.path.exists(folder):
+        raise FileNotFoundError(f"Folder '{folder}' tidak ditemukan")
+    
+    # Cari file yang dimulai dengan prefix di dalam folder
+    files = [f for f in os.listdir(folder) if f.startswith(prefix) and f.endswith('.json')]
+    print(f"File ditemukan di {folder}: {files}")  # Debugging
+    
+    if not files:
+        raise FileNotFoundError(f"Tidak ada file yang ditemukan dengan awalan '{prefix}' di folder '{folder}'")
+    
+    # Ambil file pertama yang cocok
+    json_filename = files[0]
+    json_path = os.path.join(folder, json_filename)
+    
+    print(f"Membuka file: {json_path}")
+    
+    # Baca file JSON
+    with open(json_path, "r", encoding="utf-8") as f:
+        try:
+            urls = json.load(f)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Gagal membaca file JSON: {e}")
+    
+    # Buat task untuk setiap URL
+    tasks = [schedule_links(url) for url in urls]
+    results = await asyncio.gather(*tasks)
+    return results
+
+async def get_schedule_links(urls, ids):
+    """
+    Menjalankan schedule_links secara sequential (satu per satu) untuk setiap URL.
+    
+    Args:
+        urls: List berisi URL yang akan diproses
+        
+    Returns:
+        List berisi hasil dari setiap URL
+    """
+    results = []
+    
+    i = 0
+    for url in urls:
+        try:
+            result = await schedule_links(url, ids[i])
+            results.append(result)
+            i = i+1
+        except Exception as e:
+            print(f"Error processing URL {url}: {e}")
+            results.append(None)  # atau bisa append error message
+    
+    return results
 
 async def main():
     if len(sys.argv) < 2:
@@ -497,6 +575,20 @@ async def main():
     elif option == "3":
         url = "https://bwfworldtour.bwfbadminton.com/tournament/5224/perodua-malaysia-masters-2025/results/2025-05-20"
         await schedule_links(url)
+    elif option == "3A":
+        hasil = await loop_schedule_links(prefix="schedule_links", folder="input")
+        # (Opsional) Cetak hasil
+        print("\nHasil pemrosesan:")
+        for h in hasil:
+            print(h)
+    elif option == "3B":
+        urls = get_string_array_from_json("calendar.json", "Link", "input")
+        ids = get_string_array_from_json("calendar.json", "id", "input")
+        print("\nHasil pemrosesan:")
+        for h in urls:
+            print(h)
+        await get_schedule_links(urls, ids)
+
     elif option == "4":
         url = "https://bwfworldtour.bwfbadminton.com/calendar/?cyear=2025&rstate=all"
         await do_extract_calendar(url)
@@ -504,8 +596,17 @@ async def main():
         result = await save_tour_to_supabase("output")
         print(f"Supabase insertion result: {result['message']}")
     elif option == "11":  # SAVE TABLE CALENDAR KE SUPABASE
-        result = await bwf_calendar_to_supabase("output")
+        result = await bwf_calendar_to_supabase("input")
         print(f"Supabase insertion result: {result['message']}")
+    elif option == "100":  # SAVE TABLE CALENDAR KE SUPABASE
+        delete_files_by_extension("output", ".png")
+        delete_files_by_extension("output", ".html")
+        delete_files_by_extension("output1", ".png")
+        delete_files_by_extension("output1", ".html")
+        delete_files_by_extension("output2", ".png")
+        delete_files_by_extension("output2", ".html")
+    elif option == "101":  # SAVE TABLE CALENDAR KE SUPABASE
+        add_id_to_json("input", "calendar.json")
 
     else:
         print("Opsi tidak valid. Gunakan: 1, 2, atau 3")
