@@ -2,8 +2,8 @@ from playwright.async_api import async_playwright
 import sys
 import asyncio
 from genlib import prepare_page, save_html_content, save_screenshot  
-from supalib import save_tour_to_supabase, bwf_calendar_to_supabase
-from jsonlib import get_string_array_from_json, delete_files_by_extension, add_id_to_json
+from supalib import save_tour_to_supabase, bwf_calendar_to_supabase, bwf_tour_to_supabase
+from jsonlib import get_string_array_from_json, delete_files_by_extension, add_id_to_json, read_json_list, extract_number_from_filename
 from datetime import datetime
 import json
 import asyncio
@@ -97,7 +97,7 @@ async def save_ranking_options_to_json(page, output_dir, timestamp):
         return None
 
 
-async def extract_match_card_text(page, output_dir, timestamp):
+async def extract_match_card_text(page, output_dir, timestamp, id = "01", result_file="match"):
     """Extract structured text from match-card elements and save to JSON with processed page title in each card."""
     try:
         # Extract and process page title
@@ -119,6 +119,7 @@ async def extract_match_card_text(page, output_dir, timestamp):
 
             # Add processed page title to card data
             card_data["Tour"] = page_title
+            card_data["id"] = id
 
             # Match Name
             match_name_el = await card.query_selector('span.match-name')
@@ -220,7 +221,7 @@ async def extract_match_card_text(page, output_dir, timestamp):
             print("No data extracted from match cards.")
             return None
 
-        output_file = f"{output_dir}/match_card_text_{timestamp}.json"
+        output_file = f"{output_dir}/{result_file}_{id}_{timestamp}.json"
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(match_card_data, f, indent=2)
         print(f"Match card text saved to {output_file}")
@@ -430,7 +431,7 @@ async def scrape_ranking_options(page, output_dir, timestamp):
         await save_screenshot(page, output_dir, timestamp, suffix="_error")
         return None
 
-async def match_card_text(url):
+async def match_card_text(url, id = "01"):
     p, browser, context, page, timestamp = await prepare_page(url)
     if not page:
         print("Preparation failed, cannot proceed with scraping.")
@@ -442,10 +443,10 @@ async def match_card_text(url):
         await switch_to_list_view(page)
         await save_html_content(page, "output", timestamp, "listview")
         await save_screenshot(page, "output", timestamp, "listview")
-        await extract_match_card_text(page, "output", timestamp)
+        await extract_match_card_text(page, "output", timestamp, id)
         # Load scraped data into Supabase
-        result = await save_tour_to_supabase("output")
-        print(f"Supabase insertion result: {result['message']}")
+        # result = await save_tour_to_supabase("output")
+        # print(f"Supabase insertion result: {result['message']}")
     finally:
         if page:
             await page.close()
@@ -535,6 +536,7 @@ async def loop_schedule_links(prefix="schedule_links", folder="input"):
     results = await asyncio.gather(*tasks)
     return results
 
+
 async def get_schedule_links(urls, ids):
     """
     Menjalankan schedule_links secara sequential (satu per satu) untuk setiap URL.
@@ -558,6 +560,38 @@ async def get_schedule_links(urls, ids):
             results.append(None)  # atau bisa append error message
     
     return results
+
+
+
+async def loop_files_schedule(prefix="schedule_links", folder="input"):
+    # Cek apakah folder ada
+    if not os.path.exists(folder):
+        raise FileNotFoundError(f"Folder '{folder}' tidak ditemukan")
+    
+    # Cari file yang dimulai dengan prefix di dalam folder
+    files = [f for f in os.listdir(folder) if f.startswith(prefix) and f.endswith('.json')]
+    print(f"File ditemukan di {folder}: {files}")  # Debugging
+    
+    if not files:
+        raise FileNotFoundError(f"Tidak ada file yang ditemukan dengan awalan '{prefix}' di folder '{folder}'")
+    
+    # Ambil file pertama yang cocok
+    json_filename = files[0]
+    json_path = os.path.join(folder, json_filename)
+    
+    print(f"Membuka file: {json_path}")
+    
+    # Baca file JSON
+    with open(json_path, "r", encoding="utf-8") as f:
+        try:
+            urls = json.load(f)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Gagal membaca file JSON: {e}")
+    
+    # Buat task untuk setiap URL
+
+    return "dummy"
+
 
 async def main():
     if len(sys.argv) < 2:
@@ -592,12 +626,27 @@ async def main():
     elif option == "4":
         url = "https://bwfworldtour.bwfbadminton.com/calendar/?cyear=2025&rstate=all"
         await do_extract_calendar(url)
+
+    elif option == "5":
+        filename = "schedule_links_01.json"
+        id = extract_number_from_filename(filename)
+        urls = read_json_list("input", filename)
+
+        print("\nHasil pemrosesan:")
+        for h in urls:
+            print(h)
+            await match_card_text(h, id)
+
     elif option == "10":  # SAVE TABLE TOUR KE SUPABASE
         result = await save_tour_to_supabase("output")
         print(f"Supabase insertion result: {result['message']}")
     elif option == "11":  # SAVE TABLE CALENDAR KE SUPABASE
         result = await bwf_calendar_to_supabase("input")
         print(f"Supabase insertion result: {result['message']}")
+    elif option == "12":  # SAVE TABLE CALENDAR KE SUPABASE
+        result = await bwf_tour_to_supabase("output")
+        print(f"Supabase insertion result: {result['message']}")
+
     elif option == "100":  # SAVE TABLE CALENDAR KE SUPABASE
         delete_files_by_extension("output", ".png")
         delete_files_by_extension("output", ".html")

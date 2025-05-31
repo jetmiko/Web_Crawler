@@ -1,6 +1,103 @@
 import json
 import os
 from typing import List, Union
+import re
+from datetime import datetime
+
+def extract_number_from_filename(filename):
+    try:
+        # Use regex to find a number (one or more digits) in the filename
+        match = re.search(r'\d+', filename)
+        if match:
+            return match.group(0)
+        else:
+            print(f"Error: No number found in filename {filename}")
+            return ""
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return ""
+    
+def extract_number_from_string(input_string):
+    # Periksa apakah input_string adalah None
+    if input_string is None:
+        # print("Input string adalah None, mengembalikan 0.")
+        return 0
+    
+    try:
+        # Gunakan regex untuk menemukan angka (satu digit atau lebih) dalam string
+        match = re.search(r'\d+', input_string)
+        if match:
+            # Ubah hasil yang cocok menjadi integer dan kembalikan
+            return int(match.group(0))
+        else:
+            print(f"Error: Tidak ada angka ditemukan dalam string '{input_string}', mengembalikan 0.")
+            return 0 # Kembalikan 0 jika tidak ada angka yang ditemukan
+    except TypeError:
+        # Menangani kasus jika input_string bukan string (selain None yang sudah ditangani)
+        # Misalnya, jika input adalah tipe data numerik atau boolean secara tidak sengaja.
+        print(f"Error: Tipe input tidak valid ('{type(input_string).__name__}'), mengembalikan 0.")
+        return 0
+    except Exception as e:
+        print(f"Error: {str(e)}, mengembalikan 0.")
+        return 0 # Kembalikan 0 jika terjadi kesalahan lain
+
+def parse_datetime_from_data(data):
+    try:
+        # Extract date and time from the input dictionary
+        date_str = data.get("Date", "").strip()
+        time_str = data.get("Time", "").strip()
+
+        # Check if date and time are provided
+        if not date_str or not time_str:
+            print("Error: Missing Date or Time in input data")
+            return None
+
+        # Remove "Est." prefix from time if present
+        time_str = re.sub(r'^Est\.\s*', '', time_str)
+
+        # print(f"time_str: {time_str}")
+
+        # Combine date and time strings, assuming year 2025
+        datetime_str = f"{date_str} 2025 {time_str}"
+
+        # Parse the combined string into a datetime object
+        dt = datetime.strptime(datetime_str, "%d %b %Y %I:%M %p")
+
+        return dt
+
+    except ValueError as e:
+        print(f"Error: Invalid date or time format - {str(e)}")
+        return None
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return None
+
+# Example usage:
+# data = {"Date": "7 JAN", "Time": "Est. 11:30 AM"}
+# result = parse_datetime_from_data(data)
+# print(result)  # Output: 2025-01-07 11:30:00
+
+
+def read_json_list(folder, filename):
+    file_path = os.path.join(folder, filename)
+    try:
+        with open(file_path, 'r') as file:
+            data = json.load(file)
+            if isinstance(data, list):
+                return data
+            else:
+                print("Error: JSON root is not a list")
+                return []
+    except FileNotFoundError:
+        print(f"Error: File {file_path} not found")
+        return []
+    except json.JSONDecodeError:
+        print("Error: Invalid JSON format")
+        return []
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return []
+
 
 def get_string_array_from_json(filename: str, key: str, folder_name: str = "") -> List[str]:
     """
@@ -149,9 +246,6 @@ def delete_files_by_extension(folder, extension):
                     print(f"File dihapus: {file_path}")
                 except Exception as e:
                     print(f"Gagal menghapus {file_path}: {str(e)}")   
-
-import os
-import json
 
 def add_id_to_json(folder, filename):
     """

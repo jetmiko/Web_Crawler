@@ -5,4 +5,5 @@ doc/
 crawl4ai_env/
 output/
 **/*output*/
+**/*input*/
 __pycache__/
