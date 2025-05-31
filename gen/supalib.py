@@ -5,6 +5,7 @@ from supabase import create_client, Client
 from dotenv import load_dotenv
 from jsonlib import parse_datetime_from_data, extract_number_from_filename, extract_number_from_string
 import re
+from datetime import datetime
 
 async def save_tour_to_supabase(output_dir: str = "output") -> dict:
     """Save JSON match data from output folder to Supabase bwf_tour table.
@@ -27,10 +28,10 @@ async def save_tour_to_supabase(output_dir: str = "output") -> dict:
     supabase: Client = create_client(supabase_url, supabase_key)
 
     try:
-        # Find all JSON files in output folder matching match_card_text_*.json
-        json_files = glob.glob(os.path.join(output_dir, "match_card_text_*.json"))
+        # Find all JSON files in output folder matching match_*.json
+        json_files = glob.glob(os.path.join(output_dir, "match_*.json"))
         if not json_files:
-            return {"success": False, "message": f"No match_card_text_*.json files found in {output_dir}"}
+            return {"success": False, "message": f"No match_*.json files found in {output_dir}"}
 
         total_inserted = 0
         total_skipped = 0
@@ -291,10 +292,10 @@ async def bwf_tour_to_supabase(output_dir: str = "output") -> dict:
     supabase: Client = create_client(supabase_url, supabase_key)
 
     try:
-        # Find all JSON files in output folder matching match_card_text_*.json
-        json_files = glob.glob(os.path.join(output_dir, "match_card_text_*.json"))
+        # Find all JSON files in output folder matching match_*.json
+        json_files = glob.glob(os.path.join(output_dir, "match_*.json"))
         if not json_files:
-            return {"success": False, "message": f"No match_card_text_*.json files found in {output_dir}"}
+            return {"success": False, "message": f"No match_*.json files found in {output_dir}"}
 
         total_inserted = 0
         total_skipped = 0
@@ -430,3 +431,106 @@ async def bwf_tour_to_supabase(output_dir: str = "output") -> dict:
             "message": f"Error processing files in {output_dir}: {str(e)}"
         }
 
+
+async def bwf_schedule_to_supabase(schedule_dir: str = "input/schedule") -> dict:
+    """Save schedule data from JSON files in schedule_dir to Supabase bwf_schedule table.
+    
+    Args:
+        schedule_dir (str): Path to the folder containing schedule JSON files (default: 'input/schedule')
+    
+    Returns:
+        dict: Result with success status and message
+    """
+    # Load environment variables
+    load_dotenv()
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_KEY")
+
+    if not supabase_url or not supabase_key:
+        return {"success": False, "message": "Missing Supabase URL or Key"}
+
+    # Initialize Supabase client
+    supabase: Client = create_client(supabase_url, supabase_key)
+
+    try:
+        # Process schedule JSON files from schedule_dir
+        schedule_files = glob.glob(os.path.join(schedule_dir, "schedule_links_*.json"))
+        if not schedule_files:
+            return {
+                "success": False,
+                "message": f"No schedule_links_*.json files found in {schedule_dir}"
+            }
+
+        schedule_inserted = 0
+        schedule_skipped = 0
+        schedule_errors = []
+
+        for schedule_file in schedule_files:
+            try:
+                # Extract tour number from filename (e.g., schedule_links_10.json -> 10)
+                filename = os.path.basename(schedule_file)
+                tour_match = re.search(r'schedule_links_(\d+)\.json', filename)
+                if not tour_match:
+                    schedule_errors.append(f"Skipped {schedule_file}: Could not extract tour number")
+                    continue
+                tour_number = int(tour_match.group(1))
+
+                # Read schedule JSON file
+                with open(schedule_file, "r", encoding="utf-8") as f:
+                    urls = json.load(f)
+
+                for url in urls:
+                    # Extract date from URL (e.g., 2025-01-07)
+                    date_match = re.search(r'(\d{4}-\d{2}-\d{2})', url)
+                    if date_match and "podium" not in url:  # Skip podium URLs
+                        date_str = date_match.group(1)
+                        try:
+                            # Validate date format
+                            schedule_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+                            
+                            # Prepare data for bwf_schedule table (exclude id as it's generated always)
+                            schedule_data = {
+                                "tour": tour_number,
+                                "date": schedule_date.isoformat()
+                            }
+
+                            # Insert to bwf_schedule table (no upsert since id is auto-generated)
+                            response = supabase.table("bwf_schedule").insert(
+                                schedule_data
+                            ).execute()
+
+                            if response.data:
+                                schedule_inserted += 1
+                            else:
+                                schedule_errors.append(
+                                    f"Failed to insert schedule for tour {tour_number} and date {date_str}: {response.error}"
+                                )
+                                schedule_skipped += 1
+                        except ValueError:
+                            schedule_errors.append(f"Invalid date format in {url}")
+                            schedule_skipped += 1
+                    else:
+                        schedule_skipped += 1
+
+            except Exception as e:
+                schedule_errors.append(f"Error processing {schedule_file}: {str(e)}")
+                schedule_skipped += 1
+
+        # Prepare final result
+        result = {
+            "success": schedule_inserted > 0,
+            "message": (
+                f"Processed {len(schedule_files)} schedule JSON files: "
+                f"Inserted {schedule_inserted} schedule entries, Skipped {schedule_skipped} schedule entries"
+            )
+        }
+        if schedule_errors:
+            result["message"] += f"\nErrors encountered:\n" + "\n".join(schedule_errors)
+
+        return result
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error processing files in {schedule_dir}: {str(e)}"
+        }

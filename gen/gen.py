@@ -2,12 +2,13 @@ from playwright.async_api import async_playwright
 import sys
 import asyncio
 from genlib import prepare_page, save_html_content, save_screenshot  
-from supalib import save_tour_to_supabase, bwf_calendar_to_supabase, bwf_tour_to_supabase
+from supalib import save_tour_to_supabase, bwf_calendar_to_supabase, bwf_tour_to_supabase, bwf_schedule_to_supabase
 from jsonlib import get_string_array_from_json, delete_files_by_extension, add_id_to_json, read_json_list, extract_number_from_filename
 from datetime import datetime
 import json
 import asyncio
 import os
+import glob
 
 async def switch_to_list_view(page):
     """Switch the page to List View by clicking the List View label."""
@@ -593,6 +594,32 @@ async def loop_files_schedule(prefix="schedule_links", folder="input"):
     return "dummy"
 
 
+async def process_schedule_json():
+    # Mendapatkan daftar semua file JSON di folder input/schedule
+    json_files = glob.glob(os.path.join("input", "schedule", "*.json"))
+    
+    if not json_files:
+        print("Tidak ada file JSON ditemukan di folder input/schedule")
+        return
+    
+    print("\nMemproses file JSON:")
+    for json_file in json_files:
+        # Mendapatkan nama file dari path
+        filename = os.path.basename(json_file)
+        print(f"\nMemproses file: {filename}")
+        
+        # Ekstrak ID dari nama file
+        id = extract_number_from_filename(filename)
+        
+        # Baca isi file JSON
+        urls = read_json_list(os.path.join("input", "schedule"), filename)
+        
+        # Proses setiap URL dalam file JSON
+        print("Hasil pemrosesan:")
+        for url in urls:
+            print(url)
+            await match_card_text(url, id)
+
 async def main():
     if len(sys.argv) < 2:
         print("Gunakan: python gen.py [1|2|3|4|10|11]")
@@ -637,6 +664,10 @@ async def main():
             print(h)
             await match_card_text(h, id)
 
+    elif option == "6":
+        await process_schedule_json()
+
+
     elif option == "10":  # SAVE TABLE TOUR KE SUPABASE
         result = await save_tour_to_supabase("output")
         print(f"Supabase insertion result: {result['message']}")
@@ -646,6 +677,9 @@ async def main():
     elif option == "12":  # SAVE TABLE CALENDAR KE SUPABASE
         result = await bwf_tour_to_supabase("output")
         print(f"Supabase insertion result: {result['message']}")
+    elif option == "13":
+        await bwf_schedule_to_supabase()
+
 
     elif option == "100":  # SAVE TABLE CALENDAR KE SUPABASE
         delete_files_by_extension("output", ".png")
