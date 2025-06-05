@@ -146,6 +146,10 @@ async def extract_match_card_text(page, output_dir, timestamp, id = "01", result
                     country_code = (await team1_flag.get_attribute('alt')).strip()
                     if country_code:
                         card_data["Team_1_Country"] = country_code
+                
+                # Check if Team 1 is winner
+                team1_winner_dot = await team1_wrapper.query_selector('div.winner-dot')
+                card_data["Team_1_Winner"] = team1_winner_dot is not None
 
             # Separator
             separator_el = await card.query_selector('div.separator')
@@ -166,6 +170,18 @@ async def extract_match_card_text(page, output_dir, timestamp, id = "01", result
                     country_code = (await team2_flag.get_attribute('alt')).strip()
                     if country_code:
                         card_data["Team_2_Country"] = country_code
+                
+                # Check if Team 2 is winner
+                team2_winner_dot = await team2_wrapper.query_selector('div.winner-dot')
+                card_data["Team_2_Winner"] = team2_winner_dot is not None
+
+            # Determine overall winner
+            if card_data.get("Team_1_Winner"):
+                card_data["Winner"] = 1
+            elif card_data.get("Team_2_Winner"):
+                card_data["Winner"] = 2
+            else:
+                card_data["Winner"] = 0
 
             # Scores
             score_sets = await card.query_selector_all('div.game-score-set')
@@ -234,6 +250,7 @@ async def extract_match_card_text(page, output_dir, timestamp, id = "01", result
         with open(f"{output_dir}/debug_page_{timestamp}.html", "w", encoding="utf-8") as f:
             f.write(html_content)
         return None
+    
 
 async def extract_calendar(page, output_dir, timestamp):
     """Extract structured text from tournament-card elements and save to JSON with processed page title."""
@@ -664,6 +681,16 @@ async def main():
             print(h)
             await match_card_text(h, id)
 
+    elif option == "5A":
+        filename = "schedule_links_130.json"
+        id = extract_number_from_filename(filename)
+        urls = read_json_list("input/schedule", filename)
+
+        print("\nHasil pemrosesan:")
+        for h in urls:
+            print(h)
+            await match_card_text(h, id)
+
     elif option == "6":
         await process_schedule_json()
 
@@ -674,14 +701,17 @@ async def main():
     elif option == "11":  # SAVE TABLE CALENDAR KE SUPABASE
         result = await bwf_calendar_to_supabase("input")
         print(f"Supabase insertion result: {result['message']}")
-    elif option == "12":  # SAVE TABLE CALENDAR KE SUPABASE
+    elif option == "12":  # SAVE TOUR KE SUPABASE
         result = await bwf_tour_to_supabase("output")
         print(f"Supabase insertion result: {result['message']}")
-    elif option == "13":
+    elif option == "savetour":  # SAVE TOUR KE SUPABASE
+        result = await bwf_tour_to_supabase("output")
+        print(f"Supabase insertion result: {result['message']}")
+    elif option == "saveschedule":
         await bwf_schedule_to_supabase()
 
 
-    elif option == "100":  # SAVE TABLE CALENDAR KE SUPABASE
+    elif option == "del":  # SAVE TABLE CALENDAR KE SUPABASE
         delete_files_by_extension("output", ".png")
         delete_files_by_extension("output", ".html")
         delete_files_by_extension("output1", ".png")

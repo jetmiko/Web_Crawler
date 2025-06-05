@@ -79,7 +79,7 @@ async def save_tour_to_supabase(output_dir: str = "output") -> dict:
                         "team_2_seeding": match.get("Team_2_Seeding"),
                         "separator": match.get("Separator"),
                         "scores": match.get("Scores"),
-                        "date": match.get("Date"),
+                        "datetime": match.get("Date"),
                         "status": match.get("Status"),
                         "time": match.get("Time"),
                         "category": match.get("Category"),
@@ -92,7 +92,7 @@ async def save_tour_to_supabase(output_dir: str = "output") -> dict:
                     # Insert or update (upsert) to handle duplicates
                     response = supabase.table("bwf_tour").upsert(
                         match_data,
-                        on_conflict="tour,match_name,court,date"
+                        on_conflict="tour,match_name,court,datetime"
                     ).execute()
 
                     # Check if insertion was successful
@@ -374,6 +374,26 @@ async def bwf_tour_to_supabase(output_dir: str = "output") -> dict:
                     if isinstance(scores, str):
                         scores = [scores] if scores else []
 
+                    # Handle winner field - convert to integer if it exists and is valid
+                    winner = match.get("Winner")
+                    if winner is not None:
+                        # If winner is a string, try to convert to integer
+                        if isinstance(winner, str):
+                            if winner.strip().isdigit():
+                                winner = int(winner.strip())
+                            elif winner.strip().lower() in ['1', 'team 1', 'team1']:
+                                winner = 1
+                            elif winner.strip().lower() in ['2', 'team 2', 'team2']:
+                                winner = 2
+                            else:
+                                winner = None  # Invalid winner format
+                        # If winner is already an integer, validate it's 1 or 2
+                        elif isinstance(winner, int):
+                            if winner not in [1, 2]:
+                                winner = None  # Invalid winner value
+                        else:
+                            winner = None  # Invalid winner type
+
                     # Prepare data for insertion
                     match_data = {
                         "tour": match.get("id"),
@@ -391,13 +411,14 @@ async def bwf_tour_to_supabase(output_dir: str = "output") -> dict:
                         "category": match.get("Category"),
                         "round": match.get("Round"),
                         "stadium": match.get("Stadium"),
-                        "duration": match.get("Duration")
+                        "duration": match.get("Duration"),
+                        "winner": winner  # Add winner field
                     }
 
                     # Insert or update (upsert) to handle duplicates
                     response = supabase.table("bwf_tour").upsert(
                         match_data,
-                        on_conflict="tour,match,court"
+                        on_conflict="tour,match,court,datetime"
                     ).execute()
 
                     # Check if insertion was successful
