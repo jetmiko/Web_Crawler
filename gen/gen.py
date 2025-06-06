@@ -707,6 +707,9 @@ async def main():
     elif option == "savetour":  # SAVE TOUR KE SUPABASE
         result = await bwf_tour_to_supabase("output")
         print(f"Supabase insertion result: {result['message']}")
+    elif option == "savetourall":  # SAVE TOUR KE SUPABASE
+        result = await bwf_tour_to_supabase("output1")
+        print(f"Supabase insertion result: {result['message']}")
     elif option == "saveschedule":
         await bwf_schedule_to_supabase()
 
