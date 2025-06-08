@@ -449,7 +449,7 @@ async def scrape_ranking_options(page, output_dir, timestamp):
         await save_screenshot(page, output_dir, timestamp, suffix="_error")
         return None
 
-async def match_card_text(url, id = "01"):
+async def match_card_text(url, id = "01", output = 'output', saving = False):
     p, browser, context, page, timestamp = await prepare_page(url)
     if not page:
         print("Preparation failed, cannot proceed with scraping.")
@@ -459,12 +459,14 @@ async def match_card_text(url, id = "01"):
 
     try:
         await switch_to_list_view(page)
-        await save_html_content(page, "output", timestamp, "listview")
-        await save_screenshot(page, "output", timestamp, "listview")
-        await extract_match_card_text(page, "output", timestamp, id)
+        await save_html_content(page, output, timestamp, "listview")
+        await save_screenshot(page, output, timestamp, "listview")
+        await extract_match_card_text(page, output, timestamp, id)
         # Load scraped data into Supabase
-        # result = await save_tour_to_supabase("output")
-        # print(f"Supabase insertion result: {result['message']}")
+        if saving:
+            # result = await save_tour_to_supabase("output")
+            result = await bwf_tour_to_supabase(output)
+            print(f"Supabase insertion result: {result['message']}")
     finally:
         if page:
             await page.close()
@@ -637,6 +639,27 @@ async def process_schedule_json():
             print(url)
             await match_card_text(url, id)
 
+
+# Fungsi untuk meminta input dan menyimpan ke variabel global
+async def get_match_input():
+    global url, id, output, saving
+
+    url = input("Masukkan URL (kosongkan untuk skip): ") or None
+    id = input("Masukkan ID (default '130'): ") or "130"
+    output = input("Masukkan nama output (default 'output'): ") or "output"
+
+    saving_input = input("Simpan data? (y/n, default 'n'): ").lower()
+    saving = saving_input == 'y'
+
+    print(f"url = {url}")
+    print(f"id = {id}")
+    print(f"output = {output}")
+    print(f"saving = {saving}")
+
+    await match_card_text(url, id, output, saving)
+
+
+
 async def main():
     if len(sys.argv) < 2:
         print("Gunakan: python gen.py [1|2|3|4|10|11]")
@@ -713,6 +736,8 @@ async def main():
     elif option == "saveschedule":
         await bwf_schedule_to_supabase()
 
+    elif option == "match":
+        await get_match_input()
 
     elif option == "del":  # SAVE TABLE CALENDAR KE SUPABASE
         delete_files_by_extension("output", ".png")
