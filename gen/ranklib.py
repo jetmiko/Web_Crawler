@@ -498,6 +498,88 @@ async def extract_ranking_data(page, week, event_name, ranking_option):
     except Exception as e:
         print(f"Peringatan: Gagal mengekstrak data peringkat: {str(e)}")
         return []
+    
+async def extract_ranking_data_new(page, week, event_name, ranking_option):
+    """
+    Mengekstrak data peringkat dari elemen <tr> pada tabel peringkat BWF.
+    
+    Args:
+        page (Page): Objek halaman Playwright yang sudah dimuat dengan halaman peringkat.
+        week (str): Minggu peringkat yang sedang diekstrak.
+        event_name (str): Nama event yang sedang diekstrak.
+        ranking_option (str): Opsi peringkat yang sedang diekstrak.
+    
+    Returns:
+        list: Daftar dictionary berisi data peringkat untuk setiap baris.
+              Setiap dictionary memiliki kunci: week, event, ranking_option, rank, 
+              ranking_change, players, country, tournaments, points.
+              Mengembalikan list kosong jika gagal.
+    """
+    try:
+        # Selector untuk semua baris tabel peringkat
+        rows = await page.query_selector_all('table#table_id.tblRankingLanding tbody tr')
+        if not rows:
+            print("Tidak ada baris peringkat ditemukan dalam tabel.")
+            return []
+
+        rankings = []
+        print(f"Mengekstrak data dari {len(rows)} baris peringkat...")
+
+        for row in rows:
+            ranking_data = {
+                'week': week,
+                'event': event_name,
+                'ranking_option': ranking_option
+            }
+
+            # Ekstrak Rank
+            rank_elem = await row.query_selector('td.col-rank span.rank-value')
+            ranking_data['rank'] = await rank_elem.inner_text() if rank_elem else ''
+
+            # Ekstrak Ranking Change
+            change_elem = await row.query_selector('td.col-rank span.ranking-change')
+            ranking_data['ranking_change'] = await change_elem.inner_text() if change_elem else '-'
+
+            # Ekstrak Player Name dan Player URL
+            player_elems = await row.query_selector_all('td.col-player a')
+            players = []
+            for player_elem in player_elems:
+                name_1_elem = await player_elem.query_selector('span.name-1')
+                name_2_elem = await player_elem.query_selector('span.name-2')
+                name_1 = await name_1_elem.inner_text() if name_1_elem else ''
+                name_2 = await name_2_elem.inner_text() if name_2_elem else ''
+                player_name = f"{name_2} {name_1}".strip()
+                player_url = await player_elem.get_attribute('href') or ''
+                players.append({'player_name': player_name, 'player_url': player_url})
+            ranking_data['players'] = players
+
+            # Ekstrak Country
+            country_elem = await row.query_selector('td.col-country img')
+            ranking_data['country'] = await country_elem.get_attribute('title') if country_elem else ''
+
+            # Ekstrak Tournaments
+            tournaments_elem = await row.query_selector('td.col-tmt')
+            ranking_data['tournaments'] = await tournaments_elem.inner_text() if tournaments_elem else ''
+            if ranking_data['tournaments']:
+                ranking_data['tournaments'] = ranking_data['tournaments'].strip()
+
+            # Ekstrak Points
+            points_elem = await row.query_selector('td.col-points strong')
+            ranking_data['points'] = await points_elem.inner_text() if points_elem else ''
+            if ranking_data['points']:
+                ranking_data['points'] = ranking_data['points'].replace(',', '')  # Menghapus koma
+
+            # Tambahkan ke daftar jika data tidak kosong
+            if any(ranking_data.values()):
+                rankings.append(ranking_data)
+                # print(f"Ekstraksi berhasil untuk pemain: {[player['player_name'] for player in ranking_data['players']]}")
+
+        print(f"Berhasil mengekstrak {len(rankings)} entri peringkat.")
+        return rankings
+
+    except Exception as e:
+        print(f"Peringatan: Gagal mengekstrak data peringkat: {str(e)}")
+        return []    
 
 def convert_to_valid_filename(filename):
     filename = filename.lower()  # ubah ke huruf kecil
@@ -627,6 +709,82 @@ async def scrape_rank_by_week(url, ranking_option="BWF World Tour Rankings", out
         
             # Ekstrak data peringkat
             rankings = await extract_ranking_data(page, target_week, event_name, ranking_option )
+            if not rankings:
+                print("Gagal mengekstrak data peringkat.")
+                return []
+
+            # Simpan data ke JSON (opsional)
+            filename = f"rank_{ranking_option}_{event_name}_{target_week}"
+            filename = convert_to_valid_filename(filename) + ".json"
+            json_path = os.path.join(output_dir, filename)
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(rankings, f, indent=2, ensure_ascii=False)
+            print(f"Saved ranking data to {json_path}")        
+
+        return rankings
+
+    except Exception as e:
+        print(f"Terjadi kesalahan: {str(e)}")
+        if page:
+            await save_html_content(page, output_dir, timestamp, filename_prefix="bwf_tournaments_error")
+            await save_screenshot(page, output_dir, timestamp, suffix="_error")
+        return None
+
+    finally:
+        if page:
+            await page.close()
+        if context:
+            await context.close()
+        if browser:
+            await browser.close()
+        if p:
+            await p.stop()
+
+
+async def scrape_rank_by_week_new(url, ranking_option="BWF World Tour Rankings", output_dir="output", target_week = "Week 23"):
+    """Mengikis halaman dari situs BWF World Tour untuk menyimpan HTML dan opsi dropdown."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    os.makedirs(output_dir, exist_ok=True)
+
+    p, browser, context, page = await initialize_browser()
+    if not page:
+        print("Gagal memulai scraping karena inisialisasi browser gagal.")
+        return None
+
+    try:
+        if not await navigate_to_page(page, url):
+            raise Exception("Navigasi ke halaman gagal.")
+
+        await handle_cookie_consent(page)
+        if await check_captcha(page):
+            print("Scraping dihentikan karena CAPTCHA terdeteksi.")
+            return None
+
+        if not await select_ranking_option(page,ranking_option):
+            print("Gagal memilih opsi Ranking, melanjutkan dengan opsi default.")
+
+        week_options = await save_week_options_to_json(page, output_dir=output_dir)
+
+        await select_week_option(page, week_options, target_week=target_week)
+        await select_perpage_option(page, output_dir=output_dir, target_perpage="100")
+        if await check_page_block(page):
+            return None
+            
+        # await select_event(page, "MEN'S DOUBLES")
+        event_names = ["MEN'S SINGLES", "WOMEN'S SINGLES", "MEN'S DOUBLES", "WOMEN'S DOUBLES", "MIXED DOUBLES"]
+        # event_name = "MEN'S SINGLES"
+        for event_name in event_names:
+            await select_event(page, event_name)
+            # dont delete below, important for debugging
+            await save_screenshot(page, output_dir, timestamp)
+            html_filename = await save_html_content(page, output_dir, timestamp)
+            # with open(html_filename, "r", encoding="utf-8") as f:
+            #     html_content = f.read()
+            # if await check_cloudflare_block(html_content):
+            #     return None
+        
+            # Ekstrak data peringkat
+            rankings = await extract_ranking_data_new(page, target_week, event_name, ranking_option )
             if not rankings:
                 print("Gagal mengekstrak data peringkat.")
                 return []

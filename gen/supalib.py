@@ -6,6 +6,47 @@ from dotenv import load_dotenv
 from jsonlib import parse_datetime_from_data, extract_number_from_filename, extract_number_from_string
 import re
 from datetime import datetime
+from typing import Dict, Union, Any
+
+def initialize_supabase() -> Union[Client, Dict[str, Any]]:
+    """
+    Inisialisasi client Supabase dengan environment variables.
+    
+    Returns:
+        Client: Supabase client jika berhasil
+        Dict: Dictionary dengan error message jika gagal
+    """
+    # Load environment variables
+    load_dotenv()
+    
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_KEY")
+    
+    if not supabase_url or not supabase_key:
+        return {"success": False, "message": "Missing Supabase URL or Key"}
+    
+    try:
+        # Initialize Supabase client
+        supabase: Client = create_client(supabase_url, supabase_key)
+        return supabase
+    except Exception as e:
+        return {"success": False, "message": f"Failed to initialize Supabase client: {str(e)}"}
+
+def get_supabase_client() -> Union[Client, None]:
+    """
+    Fungsi helper untuk mendapatkan Supabase client.
+    
+    Returns:
+        Client: Supabase client jika berhasil, None jika gagal
+    """
+    result = initialize_supabase()
+    
+    if isinstance(result, dict):
+        print(f"Error: {result['message']}")
+        return None
+    
+    return result
+
 
 async def save_tour_to_supabase(output_dir: str = "output") -> dict:
     """Save JSON match data from output folder to Supabase bwf_tour table.
@@ -554,4 +595,169 @@ async def bwf_schedule_to_supabase(schedule_dir: str = "input/schedule") -> dict
         return {
             "success": False,
             "message": f"Error processing files in {schedule_dir}: {str(e)}"
+        }
+    
+async def bwf_rankings_to_supabase(json_file: str) -> dict:
+    """Load JSON tournament data to Supabase bwf_tournament table.
+    
+    Args:
+        json_file (str): Path to the JSON file containing tournament data
+    
+    Returns:
+        dict: Result with success status and message
+    """
+    client = get_supabase_client()
+    if client:
+        try:
+            # Read JSON file
+            with open(json_file, "r", encoding="utf-8") as f:
+                tournaments = json.load(f)
+
+            if not tournaments:
+                return {"success": False, "message": f"No tournament data found in {json_file}"}
+
+            # Insert tournaments into bwf_tournament table
+            inserted_count = 0
+            for tournament in tournaments:
+                # Prepare data for insertion
+                tournament_data = {
+                    "id": tournament.get("index"),
+                    "name": tournament.get("name"),
+                    "date": tournament.get("date"),
+                    "location": tournament.get("location"),
+                    "category": tournament.get("category"),
+                    "prize_money": tournament.get("prize_money"),
+                    "results_url": tournament.get("results_url"),
+                    "status": tournament.get("status")
+                }
+
+                # Insert or update (upsert) to handle duplicates
+                response = supabase.table("bwf_rankings").upsert(
+                    tournament_data,
+                    on_conflict="rank,category,base_category,week"
+                ).execute()
+
+                # Check if insertion was successful
+                if response.data:
+                    inserted_count += 1
+                else:
+                    print(f"Failed to insert tournament {tournament.get('name')}: {response.error}")
+
+            return {
+                "success": True,
+                "message": f"Processed {json_file}: Inserted {inserted_count} tournaments"
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Error processing {json_file}: {str(e)}"
+            }
+        
+
+# Helper: convert "Week 20" → 20, and generate week_date (Monday of that ISO week)
+def parse_week(week_str):
+    """
+    Parse week string seperti "Week 20" menjadi week number dan date.
+    
+    Args:
+        week_str (str): String week format "Week X"
+    
+    Returns:
+        tuple: (week_num, week_date) atau (None, None) jika tidak valid
+    """
+    match = re.search(r"Week (\d+)", week_str)
+    if match:
+        week_num = int(match.group(1))
+        year = datetime.now().year  # adjust if week info comes with year
+        return week_num, datetime.fromisocalendar(year, week_num, 1).date()
+    return None, None
+
+def insert_bwf_rankings_data(data, week):
+    """
+    Insert data BWF rankings ke Supabase database.
+    
+    Args:
+        data (list): List of BWF ranking data
+    
+    Returns:
+        dict: Result dengan status success/error dan message
+    """
+
+    match = re.search(r"Week (\d+)", week)
+    week_num = int(match.group(1))
+
+    # Get Supabase client
+    supabase = get_supabase_client()
+    if not supabase:
+        return {"success": False, "message": "Failed to initialize Supabase client"}
+    
+    # Mapping from event/category to base_category (customize as needed)
+    base_category_map = {
+        "MEN'S DOUBLES": 2,
+        "WOMEN'S DOUBLES": 3,
+        "MIXED DOUBLES": 4,
+        "MEN'S SINGLES": 0,
+        "WOMEN'S SINGLES": 1
+    }
+    
+    inserted_count = 0
+    errors = []
+   
+    try:
+
+        # delete to Supabase
+        supabase.table("bwf_rankings").delete().eq("week", week_num).execute()
+
+        # Insert to Supabase
+        for entry in data:
+            try:
+                week_num, week_date = parse_week(entry["week"])
+                base_category = base_category_map.get(entry["event"].upper(), -1)
+                
+                row = {
+                    "rank": int(entry["rank"]),
+                    "category": entry["event"],
+                    "base_category": base_category,
+                    "points": int(entry["points"]),
+                    "tournaments": 0,  # If not provided
+                    "week": week_num,
+                    "week_date": str(week_date),
+                    "player1_name": entry["players"][0]["player_name"],
+                    "nationality1": entry["country"],
+                    "player2_name": entry["players"][1]["player_name"] if len(entry["players"]) > 1 else "",
+                    "nationality2": entry["country"],
+                    "created_at": datetime.now().isoformat()
+                }
+
+
+                
+                # Upsert into the table (avoid duplicate by unique constraint)
+                response = supabase.table("bwf_rankings").upsert(
+                    row 
+                    # on_conflict="rank,category,base_category,week"
+                    # on_conflict=["rank", "category", "base_category", "week"]
+                ).execute()
+                
+                inserted_count += 1
+                print(f"Inserted rank {entry['rank']} - {entry['event']}")
+                
+            except Exception as e:
+                error_msg = f"Error inserting rank {entry.get('rank', 'unknown')}: {str(e)}"
+                errors.append(error_msg)
+                print(error_msg)
+        
+        return {
+            "success": True,
+            "message": f"Successfully inserted {inserted_count} records",
+            "inserted_count": inserted_count,
+            "errors": errors
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Failed to insert data: {str(e)}",
+            "inserted_count": inserted_count,
+            "errors": errors
         }

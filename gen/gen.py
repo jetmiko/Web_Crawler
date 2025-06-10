@@ -2,10 +2,10 @@ from playwright.async_api import async_playwright
 import sys
 import asyncio
 from genlib import prepare_page, save_html_content, save_screenshot  
-from supalib import save_tour_to_supabase, bwf_calendar_to_supabase, bwf_tour_to_supabase, bwf_schedule_to_supabase
+from supalib import insert_bwf_rankings_data, save_tour_to_supabase, bwf_calendar_to_supabase, bwf_tour_to_supabase, bwf_schedule_to_supabase
 from jsonlib import get_string_array_from_json, delete_files_by_extension, add_id_to_json, read_json_list, extract_number_from_filename
 from inputlib import get_match_input, get_ranking_input
-from ranklib import scrape_rank, scrape_rank_by_week
+from ranklib import scrape_rank, scrape_rank_by_week, scrape_rank_by_week_new
 from datetime import datetime
 import json
 import asyncio
@@ -641,25 +641,24 @@ async def process_schedule_json():
             print(url)
             await match_card_text(url, id)
 
+async def save_rank_supabase(folder = "output_rank", week = "Week 20"):
+    # Mendapatkan daftar semua file JSON di folder input/schedule
+    json_files = glob.glob(os.path.join(folder, "rank*.json"))
+    
+    if not json_files:
+        print("Tidak ada file JSON ditemukan di folder input/schedule")
+        return
+    
+    print("\nMemproses file JSON:")
 
-# # Fungsi untuk meminta input dan menyimpan ke variabel global
-# async def get_match_input():
-#     global url, id, output, saving
-
-#     url = input("Masukkan URL (kosongkan untuk skip): ") or None
-#     id = input("Masukkan ID (default '130'): ") or "130"
-#     output = input("Masukkan nama output (default 'output'): ") or "output"
-
-#     saving_input = input("Simpan data? (y/n, default 'n'): ").lower()
-#     saving = saving_input == 'y'
-
-#     print(f"url = {url}")
-#     print(f"id = {id}")
-#     print(f"output = {output}")
-#     print(f"saving = {saving}")
-
-#     await match_card_text(url, id, output, saving)
-
+    for json_file in json_files:
+        # Mendapatkan nama file dari path
+        print(f"\nMemproses file: {json_file}")
+        ranks = read_json_list('',json_file)
+        # for rank in ranks:
+        result = insert_bwf_rankings_data(ranks, week)
+        print(f"\nResult: {result}")
+        
 
 
 async def main():
@@ -743,10 +742,6 @@ async def main():
         print("Data input terbaru:", inp)
          # Panggil fungsi lain, jika perlu
         await match_card_text(inp["url"], inp["id"], inp["output"], inp["saving"])
-    elif option == "rank":
-        inp = get_ranking_input()
-        print("Data input terbaru:", inp)
-        await scrape_rank_by_week(inp["url"], inp["ranking_option"], inp["output_dir"], inp["target_week"])
  
     elif option == "del":  # SAVE TABLE CALENDAR KE SUPABASE
         delete_files_by_extension("output", ".png")
@@ -757,6 +752,13 @@ async def main():
         delete_files_by_extension("output2", ".html")
     elif option == "101":  # SAVE TABLE CALENDAR KE SUPABASE
         add_id_to_json("input", "calendar.json")
+
+    elif option == "rank":
+        inp = get_ranking_input()
+        print("Data input terbaru:", inp)
+        # await scrape_rank_by_week_new(inp["url"], inp["ranking_option"], inp["output_dir"], inp["target_week"])
+        await save_rank_supabase(inp["output_dir"], inp["target_week"])
+
 
     else:
         print("Opsi tidak valid. Gunakan: 1, 2, atau 3")

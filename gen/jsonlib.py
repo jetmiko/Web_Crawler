@@ -81,7 +81,7 @@ def parse_datetime_from_data(data):
 def read_json_list(folder, filename):
     file_path = os.path.join(folder, filename)
     try:
-        with open(file_path, 'r') as file:
+        with open(file_path, 'r', encoding='utf-8') as file:
             data = json.load(file)
             if isinstance(data, list):
                 return data
