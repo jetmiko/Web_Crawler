@@ -673,6 +673,26 @@ def parse_week(week_str):
         return week_num, datetime.fromisocalendar(year, week_num, 1).date()
     return None, None
 
+
+def delete_bwf_rankings_data(week_num):
+    # Get Supabase client
+    supabase = get_supabase_client()
+    if not supabase:
+        return {"success": False, "message": "Failed to initialize Supabase client"}
+    
+    try:
+        # delete to Supabase
+        supabase.table("bwf_rankings").delete().eq("week", week_num).execute()
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Failed to delete data: {str(e)}"
+        }
+    
+
+
+
 def insert_bwf_rankings_data(data, week):
     """
     Insert data BWF rankings ke Supabase database.
@@ -694,12 +714,26 @@ def insert_bwf_rankings_data(data, week):
     
     # Mapping from event/category to base_category (customize as needed)
     base_category_map = {
-        "MEN'S DOUBLES": 2,
-        "WOMEN'S DOUBLES": 3,
-        "MIXED DOUBLES": 4,
-        "MEN'S SINGLES": 0,
-        "WOMEN'S SINGLES": 1
+        "MEN'S DOUBLES": "MD",
+        "WOMEN'S DOUBLES": "WD",
+        "MIXED DOUBLES": "XD",
+        "MEN'S SINGLES": "MS",
+        "WOMEN'S SINGLES": "WS"
     }
+
+    rank_categories = [
+        "BWF World Rankings",
+        "BWF World Tour Rankings",
+        "BWF World Junior Rankings",
+        "BWF World Team Rankings",
+        "BWF World Championships Rankings",
+        "Olympic Games Qualification",
+        "BWF Para Badminton World Rankings",
+        "Paralympic Games Qualification",
+        "Parapan American Games Qualification"
+    ]
+
+    rank_category_map = {text: index for index, text in enumerate(rank_categories)}
     
     inserted_count = 0
     errors = []
@@ -707,18 +741,19 @@ def insert_bwf_rankings_data(data, week):
     try:
 
         # delete to Supabase
-        supabase.table("bwf_rankings").delete().eq("week", week_num).execute()
+        # supabase.table("bwf_rankings").delete().eq("week", week_num).execute()
 
         # Insert to Supabase
         for entry in data:
             try:
                 week_num, week_date = parse_week(entry["week"])
+                rank_category = rank_category_map.get(entry["ranking_option"], -1)
                 base_category = base_category_map.get(entry["event"].upper(), -1)
                 
                 row = {
                     "rank": int(entry["rank"]),
-                    "category": entry["event"],
-                    "base_category": base_category,
+                    "category": base_category,
+                    "rank_category": rank_category,
                     "points": int(entry["points"]),
                     "tournaments": 0,  # If not provided
                     "week": week_num,
@@ -734,13 +769,12 @@ def insert_bwf_rankings_data(data, week):
                 
                 # Upsert into the table (avoid duplicate by unique constraint)
                 response = supabase.table("bwf_rankings").upsert(
-                    row 
-                    # on_conflict="rank,category,base_category,week"
-                    # on_conflict=["rank", "category", "base_category", "week"]
+                    row, 
+                    on_conflict="rank,category,rank_category,week,player1_name"
                 ).execute()
                 
                 inserted_count += 1
-                print(f"Inserted rank {entry['rank']} - {entry['event']}")
+                print(f"Inserted rank {entry['rank']} - {entry['players'][0]['player_name']}")
                 
             except Exception as e:
                 error_msg = f"Error inserting rank {entry.get('rank', 'unknown')}: {str(e)}"

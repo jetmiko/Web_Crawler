@@ -756,7 +756,7 @@ async def main():
     elif option == "rank":
         inp = get_ranking_input()
         print("Data input terbaru:", inp)
-        # await scrape_rank_by_week_new(inp["url"], inp["ranking_option"], inp["output_dir"], inp["target_week"])
+        await scrape_rank_by_week_new(inp["url"], inp["ranking_option"], inp["output_dir"], inp["target_week"])
         await save_rank_supabase(inp["output_dir"], inp["target_week"])
 
 
