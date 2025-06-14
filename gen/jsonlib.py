@@ -4,6 +4,27 @@ from typing import List, Union
 import re
 from datetime import datetime
 
+def extract_date_from_string(text: str) -> str:
+    """
+    Extracts the date (in YYYY-MM-DD format) from a string.
+    Returns the date string or None if not found or invalid.
+    """
+    try:
+        # Cari pola tanggal di akhir string
+        match = re.search(r'(\d{4}-\d{2}-\d{2})$', text)
+        if match:
+            date_str = match.group(1)
+            
+            # Validasi apakah memang tanggal yang sah
+            datetime.strptime(date_str, "%Y-%m-%d")  # akan raise ValueError jika tidak valid
+            return date_str
+        else:
+            return None
+    except Exception as e:
+        print(f"Error extracting date: {e}")
+        return None
+
+
 def extract_number_from_filename(filename):
     try:
         # Use regex to find a number (one or more digits) in the filename

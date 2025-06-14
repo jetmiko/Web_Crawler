@@ -2,8 +2,8 @@ from playwright.async_api import async_playwright
 import sys
 import asyncio
 from genlib import prepare_page, save_html_content, save_screenshot  
-from supalib import delete_bwf_rankings_data, delete_bwf_rankings_data_by_week, insert_bwf_rankings_data, save_tour_to_supabase, bwf_calendar_to_supabase, bwf_tour_to_supabase, bwf_schedule_to_supabase
-from jsonlib import get_string_array_from_json, delete_files_by_extension, add_id_to_json, read_json_list, extract_number_from_filename
+from supalib import delete_bwf_rankings_data, delete_bwf_rankings_data_by_week, delete_bwf_tour, insert_bwf_rankings_data, save_tour_to_supabase, bwf_calendar_to_supabase, bwf_tour_to_supabase, bwf_schedule_to_supabase
+from jsonlib import extract_date_from_string, get_string_array_from_json, delete_files_by_extension, add_id_to_json, read_json_list, extract_number_from_filename
 from inputlib import get_match_input, get_ranking_input
 from ranklib import scrape_rank, scrape_rank_by_week, scrape_rank_by_week_new
 from datetime import datetime
@@ -755,11 +755,6 @@ async def main():
     elif option == "saveschedule":
         await bwf_schedule_to_supabase()
 
-    elif option == "match":
-        inp = await get_match_input()
-        print("Data input terbaru:", inp)
-         # Panggil fungsi lain, jika perlu
-        await match_card_text(inp["url"], inp["id"], inp["output"], inp["saving"])
  
     elif option == "del":  # SAVE TABLE CALENDAR KE SUPABASE
         delete_files_by_extension("output", ".png")
@@ -770,6 +765,16 @@ async def main():
         delete_files_by_extension("output2", ".html")
     elif option == "101":  # SAVE TABLE CALENDAR KE SUPABASE
         add_id_to_json("input", "calendar.json")
+
+    elif option == "match":
+        inp = await get_match_input()
+        print("Data input terbaru:", inp)
+        dates = extract_date_from_string(inp["url"])
+        print(dates)
+        response = await delete_bwf_tour(inp["id"], dates)
+        print(f"delete result: {response}")
+         # Panggil fungsi lain, jika perlu
+        await match_card_text(inp["url"], inp["id"], inp["output"], inp["saving"])
 
     elif option == "rank":
         inp = get_ranking_input()

@@ -5,8 +5,8 @@ from supabase import create_client, Client
 from dotenv import load_dotenv
 from jsonlib import parse_datetime_from_data, extract_number_from_filename, extract_number_from_string
 import re
-from datetime import datetime
 from typing import Dict, Union, Any
+from datetime import datetime, timedelta
 
 def initialize_supabase() -> Union[Client, Dict[str, Any]]:
     """
@@ -672,6 +672,39 @@ def parse_week(week_str):
         year = datetime.now().year  # adjust if week info comes with year
         return week_num, datetime.fromisocalendar(year, week_num, 1).date()
     return None, None
+
+
+async def delete_bwf_tour(tour: int, date: str):
+    """
+    Delete records from 'bwf_tour' where tour equals `tour` and datetime falls on the specified date (dd-mm-yyyy).
+    """
+    supabase = get_supabase_client()
+    if not supabase:
+        return {"success": False, "message": "Failed to initialize Supabase client"}
+
+    try:
+        # Ubah string tanggal ke datetime object
+        start = datetime.strptime(date, "%Y-%m-%d")
+        end = start + timedelta(days=1)
+
+        # Hapus data dengan tour yang cocok dan datetime antara [start, end)
+        response = supabase.table("bwf_tour") \
+            .delete() \
+            .eq("tour", tour) \
+            .gte("datetime", start.isoformat()) \
+            .lt("datetime", end.isoformat()) \
+            .execute()
+
+        return {
+            "success": True,
+            "message": "Succeed to delete data"
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Failed to delete data: {str(e)}"
+        }
 
 
 async def delete_bwf_rankings_data(week_num, rank_category=0):
