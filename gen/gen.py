@@ -2,7 +2,7 @@ from playwright.async_api import async_playwright
 import sys
 import asyncio
 from genlib import prepare_page, save_html_content, save_screenshot  
-from supalib import insert_bwf_rankings_data, save_tour_to_supabase, bwf_calendar_to_supabase, bwf_tour_to_supabase, bwf_schedule_to_supabase
+from supalib import delete_bwf_rankings_data, delete_bwf_rankings_data_by_week, insert_bwf_rankings_data, save_tour_to_supabase, bwf_calendar_to_supabase, bwf_tour_to_supabase, bwf_schedule_to_supabase
 from jsonlib import get_string_array_from_json, delete_files_by_extension, add_id_to_json, read_json_list, extract_number_from_filename
 from inputlib import get_match_input, get_ranking_input
 from ranklib import scrape_rank, scrape_rank_by_week, scrape_rank_by_week_new
@@ -11,6 +11,20 @@ import json
 import asyncio
 import os
 import glob
+
+
+rank_categories = [
+    "BWF World Rankings",
+    "BWF World Tour Rankings",
+    "BWF World Junior Rankings",
+    "BWF World Team Rankings",
+    "BWF World Championships Rankings",
+    "Olympic Games Qualification",
+    "BWF Para Badminton World Rankings",
+    "Paralympic Games Qualification",
+    "Parapan American Games Qualification"
+]
+
 
 async def switch_to_list_view(page):
     """Switch the page to List View by clicking the List View label."""
@@ -641,7 +655,7 @@ async def process_schedule_json():
             print(url)
             await match_card_text(url, id)
 
-async def save_rank_supabase(folder = "output_rank", week = "Week 20"):
+async def save_rank_supabase(folder = "output_rank", week = "20"):
     # Mendapatkan daftar semua file JSON di folder input/schedule
     json_files = glob.glob(os.path.join(folder, "rank*.json"))
     
@@ -655,7 +669,11 @@ async def save_rank_supabase(folder = "output_rank", week = "Week 20"):
         # Mendapatkan nama file dari path
         print(f"\nMemproses file: {json_file}")
         ranks = read_json_list('',json_file)
+        c = 0
         # for rank in ranks:
+        #     c = c + 1
+        #     if c < 2:
+        #         print(rank)
         result = insert_bwf_rankings_data(ranks, week)
         print(f"\nResult: {result}")
         
@@ -755,10 +773,11 @@ async def main():
 
     elif option == "rank":
         inp = get_ranking_input()
-        print("Data input terbaru:", inp)
-        await scrape_rank_by_week_new(inp["url"], inp["ranking_option"], inp["output_dir"], inp["target_week"])
+        rank_option = rank_categories[int(inp["ranking_option"])]
+        await scrape_rank_by_week_new(inp["url"], rank_option, inp["output_dir"], inp["target_week"])
+        result = await delete_bwf_rankings_data(int(inp["target_week"]), int(inp["ranking_option"]))
+        # print(result)
         await save_rank_supabase(inp["output_dir"], inp["target_week"])
-
 
     else:
         print("Opsi tidak valid. Gunakan: 1, 2, atau 3")

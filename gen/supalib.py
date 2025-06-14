@@ -674,7 +674,28 @@ def parse_week(week_str):
     return None, None
 
 
-def delete_bwf_rankings_data(week_num):
+async def delete_bwf_rankings_data(week_num, rank_category=0):
+    # Get Supabase client
+    supabase = get_supabase_client()
+    if not supabase:
+        return {"success": False, "message": "Failed to initialize Supabase client"}
+    
+    try:
+        # delete to Supabase
+        response = supabase.table("bwf_rankings").delete().eq("week", week_num).eq("rank_category", rank_category).execute()
+        return {
+            "success": True,
+            "message": f"Succeed to delete data"
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Failed to delete data: {str(e)}"
+        }
+    
+
+def delete_bwf_rankings_data_by_week(week_num):
     # Get Supabase client
     supabase = get_supabase_client()
     if not supabase:
@@ -704,8 +725,10 @@ def insert_bwf_rankings_data(data, week):
         dict: Result dengan status success/error dan message
     """
 
-    match = re.search(r"Week (\d+)", week)
-    week_num = int(match.group(1))
+    # match = re.search(r"Week (\d+)", week)
+    # week_num = int(match.group(1))
+
+    week_num = int(week)
 
     # Get Supabase client
     supabase = get_supabase_client()
@@ -746,7 +769,7 @@ def insert_bwf_rankings_data(data, week):
         # Insert to Supabase
         for entry in data:
             try:
-                week_num, week_date = parse_week(entry["week"])
+                week_num, week_date = parse_week("Week " + str(entry["week"]))
                 rank_category = rank_category_map.get(entry["ranking_option"], -1)
                 base_category = base_category_map.get(entry["event"].upper(), -1)
                 
